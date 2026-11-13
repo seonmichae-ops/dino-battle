@@ -1259,15 +1259,33 @@ $('fsMenuBtn').addEventListener('click', toggleFullscreen);
 
 // ---- 설치형 웹앱(PWA): 오프라인 저장 + 홈 화면 설치 ----
 const isInstalled = () => { try { return matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (_) { return false; } };
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const UA = navigator.userAgent;
+const isIOS = /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(UA);
+const isKakao = /KAKAOTALK/i.test(UA);
+// 메신저·SNS 앱 안의 브라우저(카카오톡, 네이버, 인스타그램, 페이스북, 라인, 다음, 밴드 등)는 앱 설치를 지원하지 않음
+const inAppName = isKakao ? '카카오톡' : /NAVER\(inapp/i.test(UA) ? '네이버 앱' : /Instagram/i.test(UA) ? '인스타그램' : /FBAN|FBAV/i.test(UA) ? '페이스북' : /\bLine\//i.test(UA) ? '라인' : /DaumApps/i.test(UA) ? '다음 앱' : /BAND\//i.test(UA) ? '밴드' : (isAndroid && /; wv\)/.test(UA)) ? '이 앱' : '';
+const isSafariIOS = isIOS && /Safari/i.test(UA) && !/CriOS|FxiOS|EdgiOS|OPiOS|Whale|NAVER|KAKAOTALK/i.test(UA);
 let installEvt = null;
 const topLevel = (() => { try { return window.self === window.top; } catch (_) { return false; } })(); // 다른 페이지 안(예: Claude 링크)에서는 설치 안내를 숨김
+const canOfferInstall = !isInstalled() && topLevel && (location.protocol === 'https:' || location.hostname === 'localhost');
 try {
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 } catch (_) {}
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!isInstalled() && topLevel) $('installBtn').classList.remove('hidden'); });
+const cleanUrl = () => location.origin + location.pathname;
+function openOutside() { // 앱 속 브라우저 → 진짜 브라우저로
+  if (isKakao) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(cleanUrl());
+  else if (isAndroid) location.href = 'intent://' + location.host + location.pathname + '#Intent;scheme=https;package=com.android.chrome;end';
+  else $('fsNote').textContent = '화면 구석의 ⋯ 또는 공유 버튼을 누르고 「Safari로 열기」를 고르세요.';
+}
+if (canOfferInstall && inAppName) {
+  $('inAppBar').classList.remove('hidden');
+  $('inAppMsg').textContent = `${inAppName} 안에서는 앱 설치·전체 화면이 안 돼요.`;
+  $('inAppBtn').textContent = isIOS && !isKakao ? '사파리로 여는 방법' : (isIOS ? '사파리로 열기' : '크롬으로 열기');
+  $('inAppBtn').addEventListener('click', openOutside);
+} else if (canOfferInstall) $('installBtn').classList.remove('hidden'); // 설치 버튼은 항상 보임 (설치 창이 아직 준비 안 됐으면 방법을 안내)
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 window.addEventListener('appinstalled', () => { installEvt = null; $('installBtn').classList.add('hidden'); $('fsNote').textContent = '설치 완료! 홈 화면의 공룡 배틀 아이콘으로 열어보세요 🦖'; });
-if (isIOS && !isInstalled() && topLevel && location.protocol === 'https:') $('installBtn').classList.remove('hidden');
 if (isInstalled()) $('fsMenuBtn').classList.add('hidden'); // 설치한 앱은 이미 전체 화면
 $('installBtn').addEventListener('click', async () => {
   if (installEvt) {
@@ -1275,9 +1293,13 @@ $('installBtn').addEventListener('click', async () => {
     try { const r = await installEvt.userChoice; if (r && r.outcome === 'accepted') $('installBtn').classList.add('hidden'); } catch (_) {}
     installEvt = null;
   } else if (isIOS) {
-    $('fsNote').textContent = '사파리 아래쪽 공유 버튼(□↑)을 누르고 「홈 화면에 추가」를 고르세요. (사파리에서만 돼요)';
+    $('fsNote').textContent = isSafariIOS ? '사파리 아래쪽 공유 버튼(□↑)을 누르고 「홈 화면에 추가」를 고르세요.' : '아이폰은 사파리에서만 설치돼요. 이 주소를 사파리로 열어 공유 버튼(□↑) → 「홈 화면에 추가」를 고르세요.';
+  } else if (/SamsungBrowser/i.test(UA)) {
+    $('fsNote').textContent = '아래쪽 메뉴(≡) → 「현재 페이지 추가」 → 「홈 화면」을 고르세요.';
+  } else if (isAndroid) {
+    $('fsNote').textContent = '크롬 오른쪽 위 메뉴(⋮) → 「홈 화면에 추가」 또는 「앱 설치」를 고르세요.';
   } else {
-    $('fsNote').textContent = '브라우저 메뉴(⋮)에서 「앱 설치」 또는 「홈 화면에 추가」를 고르세요.';
+    $('fsNote').textContent = '주소창 오른쪽의 설치 아이콘(⊕) 또는 브라우저 메뉴(⋮) → 「앱 설치」를 고르세요.';
   }
 });
 $('muteBtn').addEventListener('click', () => { initAudio(); setMuted(!AU.muted); });
