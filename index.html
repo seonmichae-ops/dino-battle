@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>공룡 배틀 – 공룡 배틀</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="stat">
+    <div class="nm" id="stName">-</div>
+    <div class="bar" id="hpb"><i></i></div>
+    <div class="lbl" id="hpTxt">체력</div>
+    <div class="bar" id="xpb"><i></i></div>
+    <div class="lbl" id="xpTxt">성장</div>
+  </div>
+  <div id="topMid"><div id="timer">10:00</div><button id="pauseBtn" class="tbtn" title="일시정지 (Enter)">⏸</button><button id="muteBtn" class="tbtn" title="소리 켜기/끄기">🔊</button><button id="fsBtn" class="tbtn" title="전체 화면">⛶</button></div>
+  <div id="eventBar" class="hidden"></div>
+  <div id="board"></div>
+  <div id="toast"></div>
+  <div id="warn"></div>
+  <div id="legend">원:<b style="background:#4cd964"></b>먹을 수 있음<b style="background:#ffd24a"></b>비슷함<b style="background:#ff4b4b"></b>위험<b style="background:#5ac8fa"></b>같은 종 · 이동 방향키 · Space 물기 · Q/W/E 스킬 · Enter 일시정지</div>
+  <div id="joyZone"></div>
+  <div id="joy"><div id="knob"></div></div>
+  <button id="skillBtn" class="abtn"><div class="cd"></div><span id="skillName">스킬</span></button>
+  <button id="skill2Btn" class="abtn hidden"><div class="cd"></div><span id="skill2Name">짓밟기<br><small>W</small></span></button>
+  <button id="biteBtn" class="abtn"><div class="cd"></div><span>물기<br><small>Space</small></span></button>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h1>🦖 공룡 배틀 : 트라이아스기</h1>
+    <div class="sub">약 2억 3천만 년 전, 공룡의 시대가 막 시작됐어요. 먹고 자라서 최강 공룡이 되세요!</div>
+    <div id="nameRow"><input id="nameIn" maxlength="8" placeholder="내 이름 (최대 8자)" autocomplete="off"><button class="smallBtn" id="fsMenuBtn">⛶ 전체 화면</button></div>
+    <div id="fsNote"></div>
+    <div id="cards"></div>
+    <button class="btn" id="startBtn">시작하기</button>
+    <div class="hof" id="menuHof"></div>
+    <div class="help">
+      <b>방향키</b>로 이동, <b>Space(물기 버튼)</b>로 앞에 있는 먹이를 물어요. 꾹 누르고 있으면 계속 물어요. 스킬은 <b>Q</b>, 새 스킬이 생기면 <b>W</b>, <b>E</b>.<br>
+      작은 공룡(<span style="color:#4cd964">초록 원</span>)을 물면 고기 조각으로 흩어져요. 조각을 하나씩 물어 먹으세요 — 다른 공룡이 가로챌 수도 있어요!<br>
+      큰 공룡(<span style="color:#ff4b4b">빨간 원</span>)은 피하고, 같은 종(<span style="color:#5ac8fa">파란 원</span>)은 친구예요.<br>
+      초식공룡은 고사리를 먹고, Lv.3부터 소철, Lv.7부터 큰 나무까지 먹을 수 있어요. Lv.10 초식공룡은 새 스킬 <b>짓밟기(W)</b>로 육식공룡을 한 방에 쓰러뜨려요!<br>
+      Lv.10 육식공룡은 같은 종도 잡아먹을 수 있어요.<br>
+      🎁 보물상자가 나타나면 찾아가서 물어 열어보세요. 특별한 이벤트가 생겨요!
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h1>⏸ 일시정지</h1>
+    <div class="sub">잠깐 쉬어가요 · Enter를 누르면 다시 시작해요</div>
+    <button class="btn" id="resumeBtn">계속하기</button><button class="btn alt" id="quitBtn">처음 화면으로</button>
+  </div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="panel">
+    <h1 id="overTitle">게임 끝!</h1>
+    <div id="result"></div>
+    <div id="resDetail"></div>
+    <button class="btn" id="againBtn">다시 하기</button><button class="btn alt" id="menuBtn">공룡 바꾸기</button>
+    <div class="hof" id="overHof"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/models.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
