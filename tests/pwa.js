@@ -9,7 +9,7 @@ const { chromium } = require('playwright-core'); const path=require('path'); con
  await pg.goto('http://localhost:8765/'); await pg.waitForTimeout(1500);
  const cdp=await ctx.newCDPSession(pg);
  const man=await cdp.send('Page.getAppManifest'); const inst=await cdp.send('Page.getInstallabilityErrors');
- const sw=await pg.evaluate(async()=>{const r=await navigator.serviceWorker.ready; await new Promise(r=>setTimeout(r,1500)); const ks=await caches.keys(); const c=await caches.open(ks.find(k=>k==='dino-v1')); return {scope:r.scope, caches:ks, files:(await c.keys()).length};});
+ const sw=await pg.evaluate(async()=>{const r=await navigator.serviceWorker.ready; await new Promise(r=>setTimeout(r,1500)); const ks=await caches.keys(); const c=await caches.open(ks.find(k=>/^dino-v\d+$/.test(k))); return {scope:r.scope, caches:ks, files:(await c.keys()).length};});
  await ctx.setOffline(true);
  await pg.reload(); await pg.waitForTimeout(1500);
  const off=await pg.evaluate(()=>({title:document.title, three:typeof THREE, cards:document.querySelectorAll('.card').length, h1:document.getElementById('menuTitle').textContent}));
