@@ -80,3 +80,10 @@
     #legend { display: none; }
     h1 { font-size: 28px; }
   }
+  #eraTabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 4px 0 8px; }
+  .eraTab { font-family: inherit; font-size: 17px; color: #fff; background: rgba(255,255,255,.1); border: 3px solid transparent; border-radius: 14px; padding: 6px 14px; cursor: pointer; line-height: 1.15; }
+  .eraTab small { display: block; font-size: 11px; opacity: .75; }
+  .eraTab.on { border-color: #ffd24a; background: rgba(255,210,74,.18); }
+  .eraTab.locked { opacity: .5; }
+  #eraNote { font-size: 14px; opacity: .9; margin: 0 auto 12px; max-width: 640px; min-height: 18px; }
+  #resDetail { white-space: pre-line; }

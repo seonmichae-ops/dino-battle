@@ -118,30 +118,38 @@ function floatText(pos, text, color, size) {
 const world = { obstacles: [], ponds: [], ferns: [], creatures: [], pteros: [], chunks: [], chest: null, decor: new THREE.Group() };
 scene.add(world.decor);
 
+let terrainEra = null;
+function clearTerrain() {
+  while (world.decor.children.length) world.decor.remove(world.decor.children[0]);
+  for (const o of world.obstacles) { if (o.ring) scene.remove(o.ring); if (o.lock) scene.remove(o.lock); }
+  world.obstacles.length = 0; world.ponds = []; terrainEra = null;
+}
 function buildTerrain() {
+  const L = curEra.look;
+  terrainEra = curEra.key;
+  scene.background = new THREE.Color(L.sky); scene.fog.color.setHex(L.sky);
   const g = new THREE.CircleGeometry(MAP_R + 40, 64);
   g.rotateX(-Math.PI / 2);
-  const groundM = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xb59a62 })); groundM.receiveShadow = true; world.decor.add(groundM);
-  const patchCols = [0x9c8a4f, 0x8f9a55, 0xc2a46a, 0x7f8f4a, 0xa8925a];
+  const groundM = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: L.ground })); groundM.receiveShadow = true; world.decor.add(groundM);
   for (let i = 0; i < 70; i++) {
-    const p = new THREE.Mesh(new THREE.CircleGeometry(rand(3, 9), 7), new THREE.MeshLambertMaterial({ color: pick(patchCols) }));
+    const p = new THREE.Mesh(new THREE.CircleGeometry(rand(3, 9), 7), new THREE.MeshLambertMaterial({ color: pick(L.patches) }));
     p.rotation.x = -Math.PI / 2; p.rotation.z = rand(0, 6);
     const a = rand(0, Math.PI * 2), d = Math.sqrt(Math.random()) * (MAP_R + 10);
     p.position.set(Math.cos(a) * d, 0.01 + i * 0.0004, Math.sin(a) * d);
     p.receiveShadow = true;
     world.decor.add(p);
   }
-  world.ponds = [{ x: 26, z: -18, r: 12 }, { x: -30, z: 28, r: 9 }, { x: -12, z: -44, r: 7 }];
+  world.ponds = L.ponds.map(p => Object.assign({}, p));
   for (const pd of world.ponds) {
-    const shore = new THREE.Mesh(new THREE.CircleGeometry(pd.r + 2.2, 12), new THREE.MeshLambertMaterial({ color: 0x8a7a4a }));
+    const shore = new THREE.Mesh(new THREE.CircleGeometry(pd.r + 2.2, 14), new THREE.MeshLambertMaterial({ color: L.shore }));
     shore.rotation.x = -Math.PI / 2; shore.position.set(pd.x, 0.04, pd.z);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(pd.r, 12), new THREE.MeshPhongMaterial({ color: 0x3f8fa6, transparent: true, opacity: 0.85, shininess: 60, flatShading: true }));
+    const water = new THREE.Mesh(new THREE.CircleGeometry(pd.r, 14), new THREE.MeshPhongMaterial({ color: L.water, transparent: true, opacity: 0.85, shininess: 60, flatShading: true }));
     water.rotation.x = -Math.PI / 2; water.position.set(pd.x, 0.07, pd.z);
     world.decor.add(shore, water);
   }
   for (let i = 0; i < 64; i++) {
     const a = i / 64 * Math.PI * 2, s = rand(3, 6);
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat(pick([0x7d6a52, 0x8e7a5c, 0x6b5a45])));
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat(pick(L.rock)));
     rock.position.set(Math.cos(a) * (MAP_R + s * 0.6), s * 0.4, Math.sin(a) * (MAP_R + s * 0.6));
     rock.rotation.set(rand(0, 3), rand(0, 3), 0);
     world.decor.add(rock);
@@ -154,16 +162,40 @@ function buildTerrain() {
     const roll = Math.random();
     const type = roll < 0.42 ? 'conifer' : roll < 0.78 ? 'cycad' : 'rock';
     const grp = new THREE.Group();
-    let r;
-    if (type === 'conifer') {
+    let r, topY = 3.6;
+    if (type === 'conifer' && L.big === 'broadleaf') { // 활엽수 (백악기 후기 꽃 피는 나무)
+      const h = rand(5, 8);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.45, h * 0.6, 6), mat(0x6b4a2e));
+      trunk.position.y = h * 0.3; grp.add(trunk);
+      for (let k = 0; k < 4; k++) {
+        const bl = new THREE.Mesh(new THREE.IcosahedronGeometry(rand(1.3, 1.9), 0), mat(pick(L.leaf)));
+        bl.position.set(rand(-0.9, 0.9), h * 0.62 + rand(0, 1.4), rand(-0.9, 0.9)); grp.add(bl);
+      }
+      if (L.flowers) for (let k = 0; k < 7; k++) {
+        const fl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), mat(pick([0xf4f0e8, 0xf2c8d8, 0xf8e08a])));
+        const a = rand(0, 6.28); fl.position.set(Math.cos(a) * 1.7, h * 0.7 + rand(0, 1.5), Math.sin(a) * 1.7); grp.add(fl);
+      }
+      r = 0.9; topY = h + 0.8;
+    } else if (type === 'conifer') {
       const h = rand(5, 9);
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, h * 0.45, 5), mat(0x6b4a2e));
       trunk.position.y = h * 0.22; grp.add(trunk);
       for (let k = 0; k < 3; k++) {
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.9 - k * 0.45, h * 0.35, 6), mat(pick([0x3f6b3a, 0x4a7a3f, 0x355e33])));
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.9 - k * 0.45, h * 0.35, 6), mat(pick(L.leaf)));
         cone.position.y = h * 0.42 + k * h * 0.18; grp.add(cone);
       }
-      r = 0.9;
+      r = 0.9; topY = 4.5;
+    } else if (type === 'cycad' && L.small === 'palm') { // 야자류
+      const h = rand(3.2, 4.2);
+      for (let k = 0; k < 4; k++) { const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, h / 4, 6), mat(0x7a5a36)); seg.position.set(k * 0.12, h / 8 + k * h / 4, 0); seg.rotation.z = -0.08; grp.add(seg); }
+      for (let k = 0; k < 7; k++) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.22, 2.4, 4), mat(0x5f8a3a)); leaf.scale.set(1, 1, 0.3);
+        const a = k / 7 * Math.PI * 2;
+        leaf.position.set(0.48 + Math.cos(a) * 0.9, h + 0.1, Math.sin(a) * 0.9);
+        leaf.lookAt(0.48 + Math.cos(a) * 3, h - 0.8, Math.sin(a) * 3); leaf.rotateX(Math.PI / 2);
+        grp.add(leaf);
+      }
+      r = 0.8; topY = h + 1.2;
     } else if (type === 'cycad') {
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 1.4, 6), mat(0x7a5a36));
       trunk.position.y = 0.7; grp.add(trunk);
@@ -177,7 +209,7 @@ function buildTerrain() {
       r = 1.0;
     } else {
       const s = rand(1.2, 2.4);
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat(pick([0x8b7a60, 0x9a876a, 0x76664f])));
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat(pick(L.rock)));
       rock.position.y = s * 0.5; rock.rotation.set(rand(0, 3), rand(0, 3), 0); grp.add(rock);
       r = s * 0.85;
     }
@@ -186,10 +218,10 @@ function buildTerrain() {
     world.decor.add(grp);
     const o = { x, z, r, type, grp, pos: new THREE.Vector3(x, 0, z), gone: false, regrowT: 0 };
     if (type !== 'rock') {
-      o.rule = TREE_RULE[type];
+      o.rule = Object.assign({}, TREE_RULE[type], { name: curEra.trees[type] });
       o.bites = o.rule.bites;
       o.ring = makeRing(0x4cd964, 0.9); o.ring.scale.setScalar(r + 0.9); o.ring.position.set(x, 0.07, z); o.ring.visible = false;
-      o.lock = makeLabel(`🔒 Lv.${o.rule.lv}부터`, '#ffe9a8'); o.lock.position.set(x, type === 'conifer' ? 4.5 : 3.6, z); o.lock.visible = false;
+      o.lock = makeLabel(`🔒 Lv.${o.rule.lv}부터`, '#ffe9a8'); o.lock.position.set(x, topY, z); o.lock.visible = false;
       o.lock.scale.set(3.2, 0.6, 1);
       scene.add(o.ring, o.lock);
     }
@@ -200,7 +232,7 @@ function buildTerrain() {
 function makeFern() {
   const grp = new THREE.Group();
   for (let k = 0; k < 5; k++) {
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.1, 4), mat(pick([0x6fae45, 0x5c9a3a, 0x86bf55])));
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.1, 4), mat(pick(curEra.look.fern)));
     const a = k / 5 * Math.PI * 2 + rand(0, .5);
     leaf.position.set(Math.cos(a) * 0.25, 0.45, Math.sin(a) * 0.25);
     leaf.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6);

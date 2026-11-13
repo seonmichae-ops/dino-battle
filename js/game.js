@@ -5,7 +5,7 @@ function makeCreature(kind, key, opts = {}) {
     kind, key, sp, isPlayer: !!opts.isPlayer, name: opts.name || sp.name,
     level: opts.level || 1, xp: 0, totalXp: 0, hp: 1, maxHp: 1, hpGhost: 1, ghostDelay: 0, s: 1, r: 1,
     pos: new THREE.Vector3(), vel: new THREE.Vector3(), want: new THREE.Vector3(), heading: rand(0, Math.PI * 2),
-    dead: false, biteCd: rand(0, 0.5), trampleCd: 0, cds: [0, 0, 0], lungeHit: false, tailAnim: 0, stompAnim: 0, stompPending: 0, sprintT: 0, dashT: 0, lungeBuff: 0, invT: 0, boostT: 0, stunT: 0, hideT: 0, chargeT: 0, chargeHits: null, lastStep: 0,
+    dead: false, biteCd: rand(0, 0.5), trampleCd: 0, cds: [0, 0, 0], lungeHit: false, tailAnim: 0, stompAnim: 0, stompPending: 0, sprintT: 0, dashT: 0, lungeBuff: 0, invT: 0, boostT: 0, stunT: 0, hideT: 0, chargeT: 0, chargeHits: null, lastStep: 0, armorT: 0, boss: !!opts.boss,
     spawnProt: opts.prot || 0, biteAnim: 0,
     aiT: rand(0, 0.3), wanderA: rand(0, Math.PI * 2), goal: null, anim: rand(0, 6), flash: 0, aggr: Math.random() < 0.5,
     baseS: opts.baseS || 1
@@ -51,6 +51,7 @@ function removeCreature(c) {
 }
 
 function xpOf(c) {
+  if (c.boss) return 400;
   if (c.kind === 'bug') return 4;
   if (c.kind === 'prey') return Math.round(10 + c.s * 8);
   return Math.round(12 + c.level * 8 + c.totalXp * 0.25);
@@ -70,11 +71,12 @@ function gain(c, xp) {
     drawTag(c);
     if (c.isPlayer) {
       let msg = c.level >= MAX_LV ? `최대 성장! ${c.sp.name} 성체 완성!` : `레벨 업! Lv.${c.level}`;
-      if (c.sp.diet === 'herb' && c.level === 3) msg = 'Lv.3! 이제 소철을 먹을 수 있어요 🌴';
-      if (c.sp.diet === 'herb' && c.level === 7) msg = 'Lv.7! 이제 큰 나무도 먹을 수 있어요 🌲';
+      if (c.sp.diet === 'herb' && c.level === 3) msg = `Lv.3! 이제 ${curEra.trees.cycad}를 먹을 수 있어요 🌴`;
+      if (c.sp.diet === 'herb' && c.level === 7) msg = `Lv.7! 이제 ${curEra.trees.conifer}도 먹을 수 있어요 🌲`;
       if (c.level >= MAX_LV && c.sp.diet === 'herb') msg = 'Lv.10! 새 스킬 「짓밟기」(W) 획득! 🦶';
       if (c.level >= MAX_LV && c.sp.diet !== 'herb') msg = 'Lv.10! 이제 같은 종도 잡아먹을 수 있어요 🍖';
       toast(msg); sfx('up'); voice(c, 1.2);
+      if (c.level >= MAX_LV) unlockNext();
     }
   }
 }
@@ -111,6 +113,10 @@ function damage(B, dmg, A, opts) {
   if (B.dead || B.invT > 0) return;
   if (opts && opts.minHp != null) dmg = Math.min(dmg, Math.max(0, B.hp - opts.minHp));
   if (dmg <= 0) return;
+  if (B.armorT > 0) { // 웅크리기: 받는 피해 80% 감소, 문 상대는 가시에 찔림
+    dmg *= 0.2;
+    if (A && A !== B && !A.dead && A.kind === 'dino' && !(opts && opts.reflect)) damage(A, Math.max(3, B.atk * 0.8), B, { reflect: true });
+  }
   B.hp -= dmg;
   B.flash = 0.15;
   B.ghostDelay = 0.35;
@@ -141,6 +147,9 @@ function kill(B, A, how) {
   if (B.isPlayer) {
     const by = how || (A ? `${A.name === A.sp.name ? '' : A.name + '의 '}${A.sp.name}에게 잡아먹혔어요!` : '쓰러졌어요!');
     endGame(false, by);
+  } else if (B.boss) {
+    boss = null; if (!ev) setMusic('calm');
+    warn(A && A.isPlayer ? `🏆 ${B.name}를 쓰러뜨렸다!` : `${B.name}가 쓰러졌어요!`);
   } else if (B.kind === 'dino') respawnQueue.push({ t: rand(3, 6), kind: 'dino' });
   else respawnQueue.push({ t: rand(4, 9), kind: B.kind });
 }
@@ -234,7 +243,7 @@ function doBite(A, tgt) {
         if (A.isPlayer) sfx('hit');
         break;
       }
-      const catchable = A.s > o.s * EAT_RATIO && o.invT <= 0 && !isRebel(o);
+      const catchable = A.s > o.s * EAT_RATIO && o.invT <= 0 && !isRebel(o) && !(o.armorT > 0); // 웅크린 갑옷 공룡은 통째로 못 삼킴
       if (catchable) { kill(o, A); break; }
       let mult = Math.pow(A.s / o.s, 1.3);
       if (A.lungeBuff > 0) { mult *= 2.5; A.lungeBuff = 0; if (A.isPlayer) toast('덥석!'); }
@@ -243,6 +252,17 @@ function doBite(A, tgt) {
       break;
     }
   }
+}
+
+// 다음 시대 해금 (이 시대에서 Lv.10 달성)
+let unlockMsg = '';
+function unlockNext() {
+  const i = eraIdx(curEra);
+  if (i < unlockedIdx || i >= ERAS.length - 1) return;
+  unlockedIdx = i + 1;
+  try { localStorage.setItem('dino_unlock', String(unlockedIdx)); } catch (_) {}
+  unlockMsg = `🔓 새 시대 「${ERAS[unlockedIdx].name}」가 열렸어요!`;
+  setTimeout(() => { if (state === 'play') { warn(unlockMsg); sfx('chest'); } }, 1900);
 }
 
 const STOMP = { name: '짓밟기', type: 'stomp', cd: 6 };
@@ -310,6 +330,10 @@ function useSkill(c, i) {
     c.vel.set(fx * c.sp.speed * 2.8, 0, fz * c.sp.speed * 2.8);
     voice(c, 1.2);
     sfxAt('stomp', c.pos, c.isPlayer ? 0.8 : 0.5);
+  } else if (sk.type === 'armor') {
+    c.armorT = 4; c.vel.set(0, 0, 0);
+    sfxAt('stomp', c.pos, c.isPlayer ? 0.6 : 0.3);
+    if (c.isPlayer) toast('웅크리기! 4초간 피해 80% 감소 · 물면 가시에 찔려요');
   } else if (sk.type === 'stomp') {
     // 짓밟기 (초식 Lv.10): 앞발을 들었다가 내리찍어 주변 육식공룡을 쓰러뜨림
     c.stompAnim = 0.55; c.stompPending = 0.3;
@@ -326,7 +350,8 @@ function doStomp(c) {
   for (const o of world.creatures) {
     if (o === c || o.dead || friendly(c, o) || o.kind === 'bug') continue;
     if (Math.hypot(o.pos.x - c.pos.x, o.pos.z - c.pos.z) > R + o.r) continue;
-    if (isMeatEater(o)) {
+    if (o.boss) { damage(o, o.maxHp * 0.12, c); hurt++; }
+    else if (isMeatEater(o)) {
       if (o.level >= MAX_LV) { // 육식 Lv.10은 두 번 밟아야 쓰러짐
         damage(o, o.maxHp * 0.5 + 1, c, o.hp > o.maxHp * 0.55 ? { minHp: 1 } : null);
         if (o.dead) kills++; else hurt++;
@@ -350,11 +375,20 @@ function spawnWave(pos, R, color) {
 //  익룡 (에우디모르포돈)
 // ====================================================================
 function makePtero(near) {
+  const PT = PTEROS[curEra.ptero];
   const g = new THREE.Group();
-  const m = mat(0x8a6a4a), mw = new THREE.MeshPhongMaterial({ color: 0xb98c5e, flatShading: true, side: THREE.DoubleSide });
+  const m = mat(PT.color), mw = new THREE.MeshPhongMaterial({ color: PT.wing, flatShading: true, side: THREE.DoubleSide });
   const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), m); body.scale.set(0.6, 0.5, 1.4); g.add(body);
   const head = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 4), m); head.rotation.x = Math.PI / 2; head.position.z = 0.8; g.add(head);
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 3), m); tail.rotation.x = Math.PI / 2; tail.position.z = -1.0; g.add(tail);
+  if (PT.longTail) { // 람포린쿠스류: 긴 꼬리 (끝에 마름모 날개)
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 3), m); tail.rotation.x = Math.PI / 2; tail.position.z = -1.0; g.add(tail);
+    if (PT.vane) { const v = new THREE.Mesh(new THREE.CircleGeometry(0.22, 4), mw); v.rotation.x = -Math.PI / 2; v.position.z = -1.65; g.add(v); }
+  }
+  if (PT.neck) { // 아즈다르코류: 긴 목, 큰 부리
+    const nk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 1.0, 5), m); nk.rotation.x = Math.PI / 2 - 0.5; nk.position.set(0, 0.25, 0.85); g.add(nk);
+    head.position.set(0, 0.55, 1.65); head.scale.set(1, 1.6, 1);
+    if (PT.crest) { const cr = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 3), m); cr.position.set(0, 0.75, 1.35); cr.rotation.x = -0.9; g.add(cr); }
+  }
   const wings = [];
   for (const sx of [-1, 1]) {
     const geo = new THREE.BufferGeometry();
@@ -362,7 +396,7 @@ function makePtero(near) {
     geo.computeVertexNormals();
     const pivot = new THREE.Group(); pivot.add(new THREE.Mesh(geo, mw)); g.add(pivot); wings.push({ pivot, sx });
   }
-  g.scale.setScalar(1.4);
+  g.scale.setScalar(PT.scale);
   scene.add(g);
   const sh = new THREE.Mesh(new THREE.CircleGeometry(1.8, 12), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; scene.add(sh);
@@ -370,7 +404,7 @@ function makePtero(near) {
   const tag = makeCanvasSprite(192, 36, 2.0, 0.38); tag.visible = false; scene.add(tag);
   const cx = near ? near.x + rand(-15, 15) : rand(-30, 30), cz = near ? near.z + rand(-15, 15) : rand(-30, 30);
   const p = { g, sh, ring, tag, wings, state: 'circle', t: rand(10, 18), ang: rand(0, 6), cx, cz, pos: new THREE.Vector3(cx, 16, cz), target: null, flap: 0,
-    hp: 30, maxHp: 30, hpGhost: 30, ghostDelay: 0, dead: false, flash: 0, tagHasName: false, kind: 'ptero', name: '에우디모르포돈', s: 0.7 };
+    hp: PT.hp, maxHp: PT.hp, hpGhost: PT.hp, ghostDelay: 0, dead: false, flash: 0, tagHasName: false, kind: 'ptero', name: PT.name, s: 0.5 * PT.scale };
   p.tagObj = { tag, get hp() { return p.hp; }, get maxHp() { return p.maxHp; }, get hpGhost() { return p.hpGhost; }, tagHasName: false };
   world.pteros.push(p);
   return p;
@@ -567,6 +601,7 @@ function think(c) {
       if (o.kind === 'bug' || c.s > o.s * EAT_RATIO) score = xpOf(o) / (d + 4);
       else if (o.kind === 'dino' && c.aggr && o.s < c.s * 1.1 && c.hp > c.maxHp * 0.6 && o.hp < c.hp) score = 2.5 / (d + 4);
       if (o.isPlayer && elapsed < 12) score = 0;
+      if (c.boss && o.kind === 'dino') score = Math.max(score, (o.isPlayer ? 6 : 3) / (d + 4)); // 보스는 공룡을 사냥
       if (score > bestScore) { bestScore = score; best = o; }
     }
   }
@@ -608,7 +643,7 @@ function think(c) {
     if (c.kind === 'dino' && c.sp.diet === 'herb' && c.level >= MAX_LV && isMeatEater(threat) && threatD < c.r + 2.4 + c.s * 0.6) useSkill(c, 1);
     if (c.kind === 'dino' && c.cds[0] <= 0) {
       const t = c.sp.skill.type;
-      if ((t === 'dash' || t === 'sprint' || t === 'hide' || t === 'roar' || t === 'charge') && threatD < 5) useSkill(c);
+      if ((t === 'dash' || t === 'sprint' || t === 'hide' || t === 'roar' || t === 'charge' || t === 'armor') && threatD < 5) useSkill(c);
       if (t === 'tail' && threatD < c.s * 1.6 + 1.6 + threat.r) useSkill(c);
     }
     return;
@@ -836,7 +871,23 @@ const VOICES = {
   thecodontosaurus: { kind: 'squeak', f: 1200 },
   plateosaurus: { kind: 'honk', f: 230, formant: 800, dur: 0.7 },
   riojasaurus: { kind: 'honk', f: 160, formant: 600, dur: 1.0 },
-  rhyncho: { kind: 'grunt', f: 260 }
+  rhyncho: { kind: 'grunt', f: 260 },
+  // 쥐라기
+  compsognathus: { kind: 'chirp', f: 1400, n: 3 }, dryosaurus: { kind: 'squeak', f: 1100 },
+  dilophosaurus: { kind: 'growl', f: 210, formant: 800, dur: 0.6 }, allosaurus: { kind: 'growl', f: 160, formant: 600, dur: 0.9 },
+  kentrosaurus: { kind: 'honk', f: 260, formant: 850, dur: 0.6 }, stegosaurus: { kind: 'honk', f: 200, formant: 700, dur: 0.8 },
+  brachiosaurus: { kind: 'honk', f: 120, formant: 500, dur: 1.3 }, indominus: { kind: 'growl', f: 110, formant: 520, dur: 1.4 },
+  // 백악기 중기
+  psittacosaurus: { kind: 'squeak', f: 1300 }, ouranosaurus: { kind: 'honk', f: 220, formant: 760, dur: 0.8 },
+  sauropelta: { kind: 'grunt', f: 200 }, argentinosaurus: { kind: 'honk', f: 110, formant: 480, dur: 1.4 },
+  spinosaurus: { kind: 'growl', f: 170, formant: 650, dur: 1.0 }, giganotosaurus: { kind: 'growl', f: 140, formant: 560, dur: 1.1 },
+  carcharodontosaurus: { kind: 'growl', f: 145, formant: 580, dur: 1.05 },
+  // 백악기 후기
+  velociraptor: { kind: 'chirp', f: 1150, n: 3, rough: 1 }, pachycephalosaurus: { kind: 'grunt', f: 300 },
+  edmontosaurus: { kind: 'honk', f: 180, formant: 900, dur: 1.0 }, styracosaurus: { kind: 'honk', f: 240, formant: 700, dur: 0.7 },
+  ankylosaurus: { kind: 'grunt', f: 180 }, triceratops: { kind: 'honk', f: 190, formant: 650, dur: 0.8 },
+  tyrannosaurus: { kind: 'growl', f: 120, formant: 500, dur: 1.3 },
+  eilenodon: { kind: 'grunt', f: 300 }, araripesuchus: { kind: 'grunt', f: 220 }, didelphodon: { kind: 'squeak', f: 1500 }
 };
 function voice(c, intensity, range) {
   if (!AU.ctx || AU.muted || !player) return;
@@ -936,12 +987,27 @@ function toast(msg) { const el = $('toast'); el.textContent = msg; el.style.opac
 function warn(msg) { const el = $('warn'); el.textContent = msg; el.style.opacity = 1; warnTimer = 1.8; }
 
 let selected = 'coelophysis';
+const hex = c => '#' + c.toString(16).padStart(6, '0');
 function buildCards() {
+  const tabs = $('eraTabs'); tabs.innerHTML = '';
+  ERAS.forEach((e, i) => {
+    const t = document.createElement('button'); const locked = i > unlockedIdx;
+    t.className = 'eraTab' + (e === curEra ? ' on' : '') + (locked ? ' locked' : '');
+    t.innerHTML = `${locked ? '🔒 ' : ''}${e.name}<small>${e.time}</small>`;
+    t.onclick = () => {
+      if (locked) { $('eraNote').textContent = `🔒 「${ERAS[i - 1].name}」에서 Lv.10(성체)을 달성하면 열려요!`; return; }
+      if (e !== curEra) setEra(e.key);
+    };
+    tabs.appendChild(t);
+  });
+  $('eraNote').textContent = curEra.sub;
+  $('menuTitle').textContent = `🦖 공룡 배틀 : ${curEra.name}`;
   const wrap = $('cards'); wrap.innerHTML = '';
   for (const [k, sp] of Object.entries(SPECIES)) {
+    if (sp.era !== curEra.key || sp.boss) continue;
     const d = document.createElement('div');
     d.className = 'card' + (k === selected ? ' sel' : '');
-    d.innerHTML = `<div class="sw" style="background:#${sp.color.toString(16).padStart(6, '0')}"></div>
+    d.innerHTML = `<div class="sw" style="background:linear-gradient(90deg,${hex(sp.color)} 70%,${hex(sp.stripe || sp.color)})"></div>
       <div class="cn">${sp.name}</div>
       <div>${sp.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
       <div class="sk">스킬(Q): ${sp.skill.name}${sp.diet === 'herb' ? '<br>Lv.10 스킬(W): 짓밟기' : ''}</div>
@@ -950,6 +1016,14 @@ function buildCards() {
     wrap.appendChild(d);
   }
 }
+function setEra(key) {
+  curEra = ERA[key];
+  if (SPECIES[selected].era !== key) selected = curEra.pick;
+  try { localStorage.setItem('dino_era', key); } catch (_) {}
+  clearWorld(); clearTerrain(); demoWorld();
+  buildCards();
+}
+try { const k = localStorage.getItem('dino_era'); if (k && ERA[k] && eraIdx(ERA[k]) <= unlockedIdx) { curEra = ERA[k]; selected = curEra.pick; } } catch (_) {}
 buildCards();
 
 function updateHUD() {
@@ -969,7 +1043,7 @@ function updateHUD() {
   if (ev) $('eventBar').textContent = `${EVENTS[ev.type].title} · ${Math.ceil(ev.t)}초`;
 }
 
-function rankList() { return world.creatures.filter(c => c.kind === 'dino' && !c.dead).sort((a, b) => b.totalXp - a.totalXp); }
+function rankList() { return world.creatures.filter(c => c.kind === 'dino' && !c.dead && !c.boss).sort((a, b) => b.totalXp - a.totalXp); }
 function updateBoard() {
   const list = rankList();
   const myRank = list.indexOf(player) + 1;
@@ -984,6 +1058,20 @@ function updateBoard() {
 // ====================================================================
 //  게임 흐름
 // ====================================================================
+let bossDone = false;
+const BOSS_AT = 180; // 쥐라기: 3분째에 보스 등장
+let boss = null;
+function spawnBoss() {
+  bossDone = true;
+  const pos = new THREE.Vector3();
+  placeRandom(pos, 4, true, player && !player.dead ? player.pos : null, 38, 60);
+  boss = makeCreature('dino', curEra.boss, { level: MAX_LV, pos, name: SPECIES[curEra.boss].name, boss: true });
+  boss.aggr = true;
+  warn(`⚠️ ${boss.name} 출현! 숲이 조용해졌어요…`);
+  toast('하얀 괴물은 모두를 노려요. 숨거나, 힘을 합쳐 쓰러뜨리세요!');
+  voice(boss, 1.8, 200); setMusic('event');
+  return boss;
+}
 let state = 'menu', player = null, elapsed = 0, shake = 0, boardT = 0, nextChest = CHEST_FIRST;
 const respawnQueue = [], pteroRespawn = [];
 
@@ -1019,7 +1107,7 @@ function clearWorld() {
 }
 
 function spawnBot(maxLv, prot) {
-  const key = pick(['eoraptor', 'coelophysis', 'coelophysis', 'herrerasaurus', 'herrerasaurus', 'plateosaurus', 'liliensternus', 'thecodontosaurus', 'thecodontosaurus', 'riojasaurus']);
+  const key = pick(curEra.pool);
   let lv;
   if (Math.random() < 0.55) lv = Math.random() < 0.6 ? 1 : 2;
   else lv = Math.round(1 + Math.pow(Math.random(), 2.2) * (maxLv - 1));
@@ -1037,7 +1125,7 @@ function spawnPrey(kind) {
     const a = rand(0, 6), d = pd.r + rand(2, 10);
     const pos = new THREE.Vector3(pd.x + Math.cos(a) * d, 0, pd.z + Math.sin(a) * d);
     if (Math.hypot(pos.x, pos.z) > MAP_R - 4) placeRandom(pos, 1.5, true);
-    return makeCreature('prey', 'rhyncho', { baseS: rand(0.5, 0.95), pos });
+    return makeCreature('prey', curEra.prey, { baseS: rand(0.5, 0.95), pos });
   }
   return makeCreature('bug', 'bug', { baseS: rand(0.34, 0.42) });
 }
@@ -1048,7 +1136,8 @@ function startGame() {
   playerName = nm || '나';
   try { if (nm) localStorage.setItem('dino_name', nm); } catch (_) {}
   clearWorld();
-  elapsed = 0; shake = 0; nextChest = CHEST_FIRST;
+  if (terrainEra !== curEra.key) { clearTerrain(); buildTerrain(); }
+  elapsed = 0; shake = 0; nextChest = CHEST_FIRST; bossDone = false; unlockMsg = '';
   const pos = new THREE.Vector3();
   placeRandom(pos, 3, true);
   player = makeCreature('dino', selected, { isPlayer: true, pos, prot: 2 });
@@ -1062,7 +1151,7 @@ function startGame() {
   $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('pause').classList.add('hidden'); $('hud').classList.remove('hidden');
   state = 'play';
   updateBoard();
-  toast(`${player.sp.name} 등장! Space로 물어서 먹어요!`);
+  toast(`${curEra.name}의 ${player.sp.name} 등장! Space로 물어서 먹어요!`);
   AU.mode = null; setMusic('calm');
 }
 
@@ -1092,6 +1181,7 @@ function endGame(survived, reason) {
   $('overTitle').textContent = survived ? (rank === 1 ? '🏆 최강 공룡 등극!' : '⏰ 시간 종료!') : '😵 잡아먹혔다!';
   $('result').textContent = survived ? `${list.length}마리 중 ${rank}위!` : reason;
   $('resDetail').textContent = `${playerName} · ${player.sp.name} · Lv.${player.level} · 점수 ${player.totalXp} · 생존 ${Math.floor(elapsed / 60)}분 ${Math.floor(elapsed % 60)}초`;
+  if (unlockMsg) $('resDetail').textContent += `\n${unlockMsg}`;
   const newIdx = recordScore();
   renderHof($('overHof'), newIdx);
   renderHof($('menuHof'), -1);
@@ -1103,9 +1193,9 @@ function endGame(survived, reason) {
 document.querySelectorAll('button').forEach(b => b.addEventListener('click', () => b.blur()));
 $('startBtn').onclick = startGame;
 $('againBtn').onclick = startGame;
-$('menuBtn').onclick = () => { $('over').classList.add('hidden'); $('menu').classList.remove('hidden'); state = 'menu'; renderHof($('menuHof'), -1); };
+$('menuBtn').onclick = () => { $('over').classList.add('hidden'); $('menu').classList.remove('hidden'); state = 'menu'; buildCards(); renderHof($('menuHof'), -1); };
 $('resumeBtn').onclick = resumeGame;
-$('quitBtn').onclick = () => { $('pause').classList.add('hidden'); $('hud').classList.add('hidden'); $('menu').classList.remove('hidden'); state = 'menu'; stopMusic(); try { if (AU.ctx) AU.ctx.resume(); } catch (_) {} renderHof($('menuHof'), -1); };
+$('quitBtn').onclick = () => { $('pause').classList.add('hidden'); $('hud').classList.add('hidden'); $('menu').classList.remove('hidden'); state = 'menu'; buildCards(); stopMusic(); try { if (AU.ctx) AU.ctx.resume(); } catch (_) {} renderHof($('menuHof'), -1); };
 
 // ---- 이름 / 명예의 전당 (이 기기에 저장) ----
 $('nameIn').value = playerName === '나' ? '' : playerName;
@@ -1113,7 +1203,7 @@ let hofOk = true;
 function loadHof() { try { return JSON.parse(localStorage.getItem('dino_hof') || '[]'); } catch (_) { hofOk = false; return []; } }
 function recordScore() {
   const list = loadHof();
-  const e = { name: playerName, score: player.totalXp, sp: player.sp.name, lv: player.level, at: Date.now() };
+  const e = { name: playerName, score: player.totalXp, sp: player.sp.name, lv: player.level, era: curEra.name, at: Date.now() };
   list.push(e);
   list.sort((a, b) => b.score - a.score || a.at - b.at);
   const top = list.slice(0, 20);
@@ -1135,7 +1225,7 @@ function renderHof(el, newIdx) {
       if (i === newIdx) tr.className = 'new';
       else if (r.name === playerName) tr.className = 'me';
       const medal = ['🥇', '🥈', '🥉'][i] || (i + 1) + '';
-      [[medal, 'r'], [r.name, ''], [`${r.sp} Lv.${r.lv}`, ''], [`${r.score}점`, 's']].forEach(([txt, cls]) => {
+      [[medal, 'r'], [r.name, ''], [`${r.era ? r.era + ' · ' : ''}${r.sp} Lv.${r.lv}`, ''], [`${r.score}점`, 's']].forEach(([txt, cls]) => {
         const td = document.createElement('td'); td.textContent = txt; if (cls) td.className = cls; tr.appendChild(td);
       });
       tb.appendChild(tr);
@@ -1197,6 +1287,7 @@ function step(dt) {
 
   // 보물상자
   if (!world.chest && elapsed >= nextChest) { makeChest(); nextChest = elapsed + CHEST_EVERY; }
+  if (curEra.boss && !bossDone && elapsed >= BOSS_AT) spawnBoss();
   if (world.chest) {
     const ch = world.chest;
     if (ch.opened) {
@@ -1220,7 +1311,7 @@ function step(dt) {
   const list = world.creatures;
   for (const c of list) {
     if (c.dead) continue;
-    c.biteCd -= dt; c.cds[0] -= dt; c.cds[1] -= dt; c.cds[2] -= dt; c.tailAnim -= dt; c.stompAnim -= dt;
+    c.biteCd -= dt; c.armorT -= dt; c.cds[0] -= dt; c.cds[1] -= dt; c.cds[2] -= dt; c.tailAnim -= dt; c.stompAnim -= dt;
     if (c.stompPending > 0) { c.stompPending -= dt; if (c.stompPending <= 0) doStomp(c); }
     if (c.dashT <= 0) c.lungeHit = false; c.sprintT -= dt; c.dashT -= dt; c.invT -= dt; c.spawnProt -= dt; c.flash -= dt; c.trampleCd -= dt; c.boostT -= dt;
     c.stunT -= dt; c.hideT -= dt; c.chargeT -= dt; c.voiceCd = (c.voiceCd || 0) - dt;
@@ -1239,7 +1330,8 @@ function step(dt) {
     if (c.boostT > 0) spd *= 2.3;
     if (c.stunT > 0) spd = 0;
     const wet = c.kind !== 'bug' && inWater(c.pos.x, c.pos.z);
-    if (wet) spd *= 0.6;
+    if (wet) spd *= c.sp.swimmer ? 1.25 : 0.6;
+    if (c.armorT > 0) spd *= 0.3;
     if (c.dashT <= 0) {
       const k = Math.min(1, dt * (c.kind === 'bug' ? 4 : 7));
       c.vel.x += (c.want.x * spd - c.vel.x) * k;
@@ -1362,6 +1454,9 @@ function renderWorld(dt) {
         arr[i * 3] = b[i * 3] + (whip ? whip * sm.tailLen * 0.9 * wi : Math.sin(ph - wi * 2.6) * amp * wi);
       }
       sm.geo.attributes.position.needsUpdate = true;
+      const off = wi => whip ? whip * sm.tailLen * 0.9 * wi : Math.sin(ph - wi * 2.6) * amp * wi;
+      for (const a of sm.attach) a.obj.position.x = a.bx + off(a.w); // 꼬리에 붙은 가시·곤봉
+      for (const e of sm.extraGeos) { const ea = e.geo.attributes.position.array; for (let i = 0; i < e.w.length; i++) if (e.w[i] > 0) ea[i * 3] = e.base[i * 3] + off(e.w[i]); e.geo.attributes.position.needsUpdate = true; }
     }
     if (m.tail) m.tail.rotation.y = c.tailAnim > 0 ? Math.sin((1 - c.tailAnim / 0.45) * Math.PI * 3) * 1.3 : Math.sin(c.anim * 0.5) * 0.25;
     // 짓밟기: 앞쪽을 들어 올렸다가 내리찍기
@@ -1372,7 +1467,7 @@ function renderWorld(dt) {
       const b = c.biteAnim > 0 ? Math.sin((1 - c.biteAnim / 0.28) * Math.PI) : 0;
       m.jaw.rotation.x = b * 0.75;
       if (m.extra.jawFront) m.extra.jawFront.rotation.x = -b * 0.35; // 헤레라: 턱 중간 관절이 꺾이며 꽉 무는 동작
-      if (m.head) m.head.rotation.x = -b * 0.25 + (c.lungeBuff > 0 ? -0.3 : 0);
+      if (m.head) m.head.rotation.x = (m.extra.headPitch || 0) - b * 0.25 + (c.lungeBuff > 0 ? -0.3 : 0);
     } else if (m.head) m.head.rotation.x = Math.sin(c.anim * 0.5) * 0.05;
     if (m.extra.wings) m.extra.wings.forEach((w, i) => { w.rotation.y = Math.sin(performance.now() / 30 + i) * 0.4; });
     const fl = c.flash > 0;
@@ -1474,6 +1569,7 @@ function renderWorld(dt) {
 }
 
 function updateCamera(dt) {
+  if (window.__cam) { const k = window.__cam; camera.position.set(...k.pos); camera.lookAt(...k.look); sun.position.set(k.look[0] + 22, 50, k.look[2] + 16); sun.target.position.set(k.look[0], 0, k.look[2]); return; } // 테스트용 고정 카메라
   if (state === 'menu' || !player) {
     menuCamA += dt * 0.08;
     camera.position.set(Math.cos(menuCamA) * 50, 34, Math.sin(menuCamA) * 50);
@@ -1495,8 +1591,8 @@ function updateCamera(dt) {
 }
 
 function demoWorld() {
-  buildTerrain();
-  for (let i = 0; i < 8; i++) makeCreature('dino', pick(Object.keys(SPECIES)), { level: (Math.random() * 6 + 1) | 0, name: pick(BOT_NAMES) });
+  if (terrainEra !== curEra.key) buildTerrain();
+  for (let i = 0; i < 8; i++) makeCreature('dino', pick(curEra.pool), { level: (Math.random() * 6 + 1) | 0, name: pick(BOT_NAMES) });
   for (let i = 0; i < 6; i++) spawnPrey('prey');
   for (let i = 0; i < 25; i++) world.ferns.push(makeFern());
   makePtero();
@@ -1541,7 +1637,7 @@ window.__el = () => elapsed;
 window.__AU = AU; window.__sfx = sfx; window.__voice = voice;
 window.__dino = {
   world, get player() { return player; }, get state() { return state; }, get ev() { return ev; },
-  startGame, useSkill, gain, setSel: k => { selected = k; }, skip: () => { elapsed = ROUND_TIME - 0.5; },
+  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, spawnBoss, get curEra() { return curEra; }, skip: () => { elapsed = ROUND_TIME - 0.5; },
   setElapsed: t => { elapsed = t; }, freeze: () => { state = 'over'; }, makeCreature, openChest, makeChest, findBiteTarget, doBite, pauseGame, resumeGame,
   forceEvent: type => { ev = { type, t: EVENTS[type].dur }; EVENTS[type].start(); $('eventBar').classList.remove('hidden'); }
 };

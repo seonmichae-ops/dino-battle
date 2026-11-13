@@ -35,8 +35,10 @@
 
 <div id="menu" class="overlay">
   <div class="panel">
-    <h1>🦖 공룡 배틀 : 트라이아스기</h1>
-    <div class="sub">약 2억 3천만 년 전, 공룡의 시대가 막 시작됐어요. 먹고 자라서 최강 공룡이 되세요!</div>
+    <h1 id="menuTitle">🦖 공룡 배틀</h1>
+    <div class="sub">먹고 자라서 최강 공룡이 되세요! 한 시대에서 Lv.10을 달성하면 다음 시대가 열려요.</div>
+    <div id="eraTabs"></div>
+    <div id="eraNote"></div>
     <div id="nameRow"><input id="nameIn" maxlength="8" placeholder="내 이름 (최대 8자)" autocomplete="off"><button class="smallBtn" id="fsMenuBtn">⛶ 전체 화면</button></div>
     <div id="fsNote"></div>
     <div id="cards"></div>
@@ -46,7 +48,7 @@
       <b>방향키</b>로 이동, <b>Space(물기 버튼)</b>로 앞에 있는 먹이를 물어요. 꾹 누르고 있으면 계속 물어요. 스킬은 <b>Q</b>, 새 스킬이 생기면 <b>W</b>, <b>E</b>.<br>
       작은 공룡(<span style="color:#4cd964">초록 원</span>)을 물면 고기 조각으로 흩어져요. 조각을 하나씩 물어 먹으세요 — 다른 공룡이 가로챌 수도 있어요!<br>
       큰 공룡(<span style="color:#ff4b4b">빨간 원</span>)은 피하고, 같은 종(<span style="color:#5ac8fa">파란 원</span>)은 친구예요.<br>
-      초식공룡은 고사리를 먹고, Lv.3부터 소철, Lv.7부터 큰 나무까지 먹을 수 있어요. Lv.10 초식공룡은 새 스킬 <b>짓밟기(W)</b>로 육식공룡을 한 방에 쓰러뜨려요!<br>
+      초식공룡은 고사리를 먹고, Lv.3부터 작은 나무, Lv.7부터 큰 나무까지 먹을 수 있어요. Lv.10 초식공룡은 새 스킬 <b>짓밟기(W)</b>로 육식공룡을 한 방에 쓰러뜨려요!<br>
       Lv.10 육식공룡은 같은 종도 잡아먹을 수 있어요.<br>
       🎁 보물상자가 나타나면 찾아가서 물어 열어보세요. 특별한 이벤트가 생겨요!
     </div>
