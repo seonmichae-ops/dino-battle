@@ -15,7 +15,16 @@
 | `js/engine.js` | 렌더러, 이름표, 지형 |
 | `js/models.js` | 절차 생성 공룡 모델 |
 | `js/game.js` | 게임 로직, AI, 사운드, UI |
+| `js/lib/three.min.js` | Three.js r128 (MIT, 오프라인 실행용으로 내장) |
+| `manifest.webmanifest`, `sw.js`, `icons/` | 설치형 웹앱(PWA): 앱 이름·아이콘, 오프라인 저장 |
 | `tests/` | 헤드리스 브라우저 테스트 (playwright-core) |
+| `tools/` | 앱 아이콘 렌더링 도구 |
+
+## 앱으로 설치
+- 주소: https://seonmichae-ops.github.io/dino-battle/
+- 안드로이드(크롬)·PC(크롬/엣지): 메뉴의 「앱으로 설치」 버튼 또는 브라우저 메뉴 → 앱 설치
+- 아이폰·아이패드: **사파리**로 열고 공유 버튼 → 「홈 화면에 추가」
+- 한 번 열어 두면 인터넷 없이도 실행됨. 파일을 크게 바꿀 때는 `sw.js`의 `VERSION`을 올릴 것
 
 ## 조작
 방향키 이동 · Space 물기 · Q/W/E 스킬 · Enter 일시정지 (폰은 조이스틱·버튼)

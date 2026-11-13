@@ -1256,6 +1256,30 @@ function toggleFullscreen() {
 }
 $('fsBtn').addEventListener('click', toggleFullscreen);
 $('fsMenuBtn').addEventListener('click', toggleFullscreen);
+
+// ---- 설치형 웹앱(PWA): 오프라인 저장 + 홈 화면 설치 ----
+const isInstalled = () => { try { return matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (_) { return false; } };
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installEvt = null;
+const topLevel = (() => { try { return window.self === window.top; } catch (_) { return false; } })(); // 다른 페이지 안(예: Claude 링크)에서는 설치 안내를 숨김
+try {
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+} catch (_) {}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (!isInstalled() && topLevel) $('installBtn').classList.remove('hidden'); });
+window.addEventListener('appinstalled', () => { installEvt = null; $('installBtn').classList.add('hidden'); $('fsNote').textContent = '설치 완료! 홈 화면의 공룡 배틀 아이콘으로 열어보세요 🦖'; });
+if (isIOS && !isInstalled() && topLevel && location.protocol === 'https:') $('installBtn').classList.remove('hidden');
+if (isInstalled()) $('fsMenuBtn').classList.add('hidden'); // 설치한 앱은 이미 전체 화면
+$('installBtn').addEventListener('click', async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    try { const r = await installEvt.userChoice; if (r && r.outcome === 'accepted') $('installBtn').classList.add('hidden'); } catch (_) {}
+    installEvt = null;
+  } else if (isIOS) {
+    $('fsNote').textContent = '사파리 아래쪽 공유 버튼(□↑)을 누르고 「홈 화면에 추가」를 고르세요. (사파리에서만 돼요)';
+  } else {
+    $('fsNote').textContent = '브라우저 메뉴(⋮)에서 「앱 설치」 또는 「홈 화면에 추가」를 고르세요.';
+  }
+});
 $('muteBtn').addEventListener('click', () => { initAudio(); setMuted(!AU.muted); });
 setMuted(AU.muted);
 

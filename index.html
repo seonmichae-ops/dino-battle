@@ -7,7 +7,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-</head>
+<!-- 설치형 웹앱(PWA) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3a2d1c">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="공룡 배틀">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -39,7 +47,7 @@
     <div class="sub">먹고 자라서 최강 공룡이 되세요! 한 시대에서 Lv.10을 달성하면 다음 시대가 열려요.</div>
     <div id="eraTabs"></div>
     <div id="eraNote"></div>
-    <div id="nameRow"><input id="nameIn" maxlength="8" placeholder="내 이름 (최대 8자)" autocomplete="off"><button class="smallBtn" id="fsMenuBtn">⛶ 전체 화면</button></div>
+    <div id="nameRow"><input id="nameIn" maxlength="8" placeholder="내 이름 (최대 8자)" autocomplete="off"><button class="smallBtn" id="fsMenuBtn">⛶ 전체 화면</button><button class="smallBtn hidden" id="installBtn">📲 앱으로 설치</button></div>
     <div id="fsNote"></div>
     <div id="cards"></div>
     <button class="btn" id="startBtn">시작하기</button>
@@ -74,7 +82,7 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/lib/three.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/models.js"></script>
