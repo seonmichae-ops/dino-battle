@@ -73,7 +73,7 @@ function gain(c, xp) {
       let msg = c.level >= MAX_LV ? `최대 성장! ${c.sp.name} 성체 완성!` : `레벨 업! Lv.${c.level}`;
       if (c.sp.diet === 'herb' && c.level === 3) msg = `Lv.3! 이제 ${curEra.trees.cycad}를 먹을 수 있어요 🌴`;
       if (c.sp.diet === 'herb' && c.level === 7) msg = `Lv.7! 이제 ${curEra.trees.conifer}도 먹을 수 있어요 🌲`;
-      if (c.level >= MAX_LV && c.sp.diet === 'herb') msg = 'Lv.10! 새 스킬 「짓밟기」(W) 획득! 🦶';
+      if (c.level >= MAX_LV && c.sp.diet === 'herb') msg = isTouch ? 'Lv.10! 새 스킬 「짓밟기」 버튼 획득! 🦶' : 'Lv.10! 새 스킬 「짓밟기」(W) 획득! 🦶';
       if (c.level >= MAX_LV && c.sp.diet !== 'herb') msg = 'Lv.10! 이제 같은 종도 잡아먹을 수 있어요 🍖';
       toast(msg); sfx('up'); voice(c, 1.2);
       if (c.level >= MAX_LV) unlockNext();
@@ -986,6 +986,8 @@ let toastTimer = 0, warnTimer = 0;
 function toast(msg) { const el = $('toast'); el.textContent = msg; el.style.opacity = 1; toastTimer = 1.8; }
 function warn(msg) { const el = $('warn'); el.textContent = msg; el.style.opacity = 1; warnTimer = 1.8; }
 
+const isTouch = (() => { try { return matchMedia('(pointer: coarse)').matches || /[?&]touch=1/.test(location.search); } catch (_) { return false; } })();
+if (isTouch) document.body.classList.add('touch');
 let selected = 'coelophysis';
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 function buildCards() {
@@ -1010,7 +1012,7 @@ function buildCards() {
     d.innerHTML = `<div class="sw" style="background:linear-gradient(90deg,${hex(sp.color)} 70%,${hex(sp.stripe || sp.color)})"></div>
       <div class="cn">${sp.name}</div>
       <div>${sp.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
-      <div class="sk">스킬(Q): ${sp.skill.name}${sp.diet === 'herb' ? '<br>Lv.10 스킬(W): 짓밟기' : ''}</div>
+      <div class="sk">스킬<span class="kb">(Q)</span>: ${sp.skill.name}${sp.diet === 'herb' ? '<br>Lv.10 스킬<span class="kb">(W)</span>: 짓밟기' : ''}</div>
       <div class="fact">${sp.fact}</div>`;
     d.onclick = () => { selected = k; buildCards(); };
     wrap.appendChild(d);
@@ -1151,7 +1153,7 @@ function startGame() {
   $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('pause').classList.add('hidden'); $('hud').classList.remove('hidden');
   state = 'play';
   updateBoard();
-  toast(`${curEra.name}의 ${player.sp.name} 등장! Space로 물어서 먹어요!`);
+  toast(`${curEra.name}의 ${player.sp.name} 등장! ${isTouch ? '빨간 버튼으로' : 'Space로'} 물어서 먹어요!`);
   AU.mode = null; setMusic('calm');
 }
 
@@ -1631,6 +1633,7 @@ if (document.fonts && document.fonts.load) {
 
 demoWorld();
 requestAnimationFrame(loop);
+
 
 // 테스트용 훅
 window.__el = () => elapsed;

@@ -79,6 +79,9 @@
     #eventBar { top: 120px; left: 12px; transform: none; font-size: 14px; white-space: normal; max-width: 55%; }
     #legend { display: none; }
     h1 { font-size: 28px; }
+    #toast, #warn { white-space: normal; width: 88vw; text-align: center; line-height: 1.3; word-break: keep-all; }
+    #toast { top: 57%; font-size: 19px; }
+    #warn { top: 33%; font-size: 17px; }
   }
   #eraTabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 4px 0 8px; }
   .eraTab { font-family: inherit; font-size: 17px; color: #fff; background: rgba(255,255,255,.1); border: 3px solid transparent; border-radius: 14px; padding: 6px 14px; cursor: pointer; line-height: 1.15; }
@@ -87,3 +90,6 @@
   .eraTab.locked { opacity: .5; }
   #eraNote { font-size: 14px; opacity: .9; margin: 0 auto 12px; max-width: 640px; min-height: 18px; }
   #resDetail { white-space: pre-line; }
+  /* 터치 기기(폰·태블릿)에서는 키보드 안내를 숨기고 터치 안내를 보임 */
+  body:not(.touch) .tc { display: none; }
+  body.touch .kb, body.touch .abtn small { display: none; }
