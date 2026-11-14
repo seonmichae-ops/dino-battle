@@ -254,14 +254,23 @@ function doBite(A, tgt) {
   }
 }
 
-// 다음 시대 해금 (이 시대에서 Lv.10 달성)
+
 let unlockMsg = '';
+// 성체 달성 기록 → 이 시대에서 서로 다른 3종이 모이면 다음 시대 해금
 function unlockNext() {
-  const i = eraIdx(curEra);
-  if (i < unlockedIdx || i >= ERAS.length - 1) return;
-  unlockedIdx = i + 1;
-  try { localStorage.setItem('dino_unlock', String(unlockedIdx)); } catch (_) {}
-  unlockMsg = `🔓 새 시대 「${ERAS[unlockedIdx].name}」가 열렸어요!`;
+  const i = eraIdx(curEra), key = player.key;
+  const list = adultsByEra[curEra.key] = adultsOf(curEra.key);
+  if (list.includes(key)) return; // 이미 성체를 달성한 종
+  list.push(key);
+  try { localStorage.setItem('dino_adults', JSON.stringify(adultsByEra)); } catch (_) {}
+  const n = list.length, next = ERAS[i + 1];
+  if (next && i >= unlockedIdx && n >= UNLOCK_NEED) {
+    unlockedIdx = i + 1;
+    try { localStorage.setItem('dino_unlock', String(unlockedIdx)); } catch (_) {}
+    unlockMsg = `🔓 성체 ${n}종 달성! 새 시대 「${next.name}」가 열렸어요!`;
+  } else if (next && i >= unlockedIdx) {
+    unlockMsg = `🦖 ${curEra.name} 성체 ${n}/${UNLOCK_NEED}종! ${UNLOCK_NEED - n}종 더 키우면 「${next.name}」가 열려요`;
+  } else unlockMsg = `🦖 ${curEra.name} 성체 도감 ${n}종째!`;
   setTimeout(() => { if (state === 'play') { warn(unlockMsg); sfx('chest'); } }, 1900);
 }
 
@@ -997,12 +1006,13 @@ function buildCards() {
     t.className = 'eraTab' + (e === curEra ? ' on' : '') + (locked ? ' locked' : '');
     t.innerHTML = `${locked ? '🔒 ' : ''}${e.name}<small>${e.time}</small>`;
     t.onclick = () => {
-      if (locked) { $('eraNote').textContent = `🔒 「${ERAS[i - 1].name}」에서 Lv.10(성체)을 달성하면 열려요!`; return; }
+      if (locked) { const pv = ERAS[i - 1]; $('eraNote').textContent = `🔒 「${pv.name}」에서 서로 다른 공룡 ${UNLOCK_NEED}종을 Lv.10(성체)까지 키우면 열려요! (지금 ${Math.min(adultsOf(pv.key).length, UNLOCK_NEED)}/${UNLOCK_NEED})`; return; }
       if (e !== curEra) setEra(e.key);
     };
     tabs.appendChild(t);
   });
-  $('eraNote').textContent = curEra.sub;
+  const nx = ERAS[eraIdx(curEra) + 1], done = adultsOf(curEra.key).length;
+  $('eraNote').textContent = curEra.sub + (nx && eraIdx(curEra) >= unlockedIdx ? ` · 성체 ${Math.min(done, UNLOCK_NEED)}/${UNLOCK_NEED}종 → 「${nx.name}」 열기` : '');
   $('menuTitle').textContent = `🦖 공룡 배틀 : ${curEra.name}`;
   const wrap = $('cards'); wrap.innerHTML = '';
   for (const [k, sp] of Object.entries(SPECIES)) {
@@ -1010,7 +1020,7 @@ function buildCards() {
     const d = document.createElement('div');
     d.className = 'card' + (k === selected ? ' sel' : '');
     d.innerHTML = `<div class="sw" style="background:linear-gradient(90deg,${hex(sp.color)} 70%,${hex(sp.stripe || sp.color)})"></div>
-      <div class="cn">${sp.name}</div>
+      <div class="cn">${sp.name}${adultsOf(sp.era).includes(k) ? ' <span class="adult" title="성체 달성">⭐</span>' : ''}</div>
       <div>${sp.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
       <div class="sk">스킬<span class="kb">(Q)</span>: ${sp.skill.name}${sp.diet === 'herb' ? '<br>Lv.10 스킬<span class="kb">(W)</span>: 짓밟기' : ''}</div>
       <div class="fact">${sp.fact}</div>`;

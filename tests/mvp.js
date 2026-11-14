@@ -11,7 +11,7 @@ const { chromium } = require('playwright-core'); const fs=require('fs'), path=re
  R.tabs0=await pg.evaluate(()=>[...document.querySelectorAll('.eraTab')].map(t=>t.className.includes('locked')));
  await pg.click('.eraTab:nth-child(2)'); R.lockNote=await pg.textContent('#eraNote');
  // 2) 트라이아스기에서 Lv.10 → 쥐라기 해금
- await pg.evaluate(()=>{const d=window.__dino; d.setSel('coelophysis'); d.startGame(); d.player.invT=999; d.gain(d.player, 5000);});
+ await pg.evaluate(()=>{const d=window.__dino; adultsByEra.triassic=['eoraptor','plateosaurus']; d.setSel('coelophysis'); d.startGame(); d.player.invT=999; d.gain(d.player, 5000);});
  await pg.waitForTimeout(2500);
  R.lv=await pg.evaluate(()=>window.__dino.player.level); R.unlock=await pg.evaluate(()=>localStorage.getItem('dino_unlock'));
  R.warn=await pg.textContent('#warn');

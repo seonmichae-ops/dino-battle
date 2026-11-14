@@ -243,7 +243,7 @@ const BOSS = {
 };
 Object.assign(SPECIES, BOSS);
 
-// 시대 맵. 순서대로 해금 (앞 시대에서 Lv.10 달성)
+// 시대 맵. 순서대로 해금 (앞 시대에서 서로 다른 3종 Lv.10 달성)
 const ERAS = [
   { key: 'triassic', name: '트라이아스기', time: '약 2억 3천만~2억 100만 년 전', sub: '공룡의 시대가 막 시작됐어요.',
     pool: ['eoraptor', 'coelophysis', 'coelophysis', 'herrerasaurus', 'herrerasaurus', 'plateosaurus', 'liliensternus', 'thecodontosaurus', 'thecodontosaurus', 'riojasaurus'],
@@ -309,3 +309,8 @@ let unlockedIdx = 0;
 try { unlockedIdx = Math.min(ERAS.length - 1, parseInt(localStorage.getItem('dino_unlock') || '0', 10) || 0); } catch (_) {}
 try { if (/[?&]all=1/.test(location.search)) unlockedIdx = ERAS.length - 1; } catch (_) {}
 const eraIdx = e => ERAS.indexOf(e);
+// 다음 시대 해금 조건: 한 시대에서 서로 다른 공룡 UNLOCK_NEED종을 Lv.10(성체)까지 키우기
+const UNLOCK_NEED = 3;
+let adultsByEra = {}; // { triassic: ['coelophysis', ...], ... } — 이 기기에 저장
+try { adultsByEra = JSON.parse(localStorage.getItem('dino_adults') || '{}') || {}; } catch (_) {}
+const adultsOf = key => adultsByEra[key] || [];
