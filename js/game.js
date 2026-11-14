@@ -113,6 +113,7 @@ function spawnChunks(pos, srcSize, totalXp, n) {
 // ====================================================================
 function damage(B, dmg, A, opts) {
   if (B.dead || B.invT > 0) return;
+  if (A && A.boostT > 0 && A.boostPow) dmg *= A.boostPow; // 부스터 힘
   if (opts && opts.minHp != null) dmg = Math.min(dmg, Math.max(0, B.hp - opts.minHp));
   if (dmg <= 0) return;
   if (B.armorT > 0) { // 웅크리기: 받는 피해 80% 감소, 문 상대는 가시에 찔림
@@ -429,6 +430,7 @@ function drawPteroTag(p) { drawTag({ tag: p.tag, hp: p.hp, maxHp: p.maxHp, hpGho
 
 function damagePtero(p, dmg, A) {
   if (p.dead) return;
+  if (A && A.boostT > 0 && A.boostPow) dmg *= A.boostPow;
   p.hp -= dmg; p.flash = 0.15; p.ghostDelay = 0.3;
   floatText(new THREE.Vector3(p.pos.x, p.pos.y + 1.5, p.pos.z), `-${Math.ceil(dmg)}`, A && A.isPlayer ? '#ffe066' : '#fff', A && A.isPlayer ? 1 : 0.75);
   if (A && A.isPlayer) sfx('hit');
@@ -525,33 +527,36 @@ function updatePtero(p, dt) {
 // ====================================================================
 //  보물상자 (대비보)
 // ====================================================================
-function makeChest() {
+function makeChest(purple) {
   const g = new THREE.Group();
-  const wood = mat(0x8a4f22), gold = new THREE.MeshPhongMaterial({ color: 0xffc83a, flatShading: true, shininess: 80, emissive: 0x553300 });
+  const wood = mat(purple ? 0x5a2a8a : 0x8a4f22), gold = new THREE.MeshPhongMaterial({ color: purple ? 0xe0b0ff : 0xffc83a, flatShading: true, shininess: 80, emissive: purple ? 0x4a1a77 : 0x553300 });
   const base = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 1.0), wood); base.position.y = 0.4; g.add(base);
   const lid = new THREE.Group(); lid.position.set(0, 0.8, -0.5);
   const lidM = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 8, 1, false, 0, Math.PI), wood);
   lidM.rotation.z = Math.PI / 2; lidM.position.z = 0.5; lid.add(lidM); g.add(lid);
   for (const x of [-0.55, 0, 0.55]) { const band = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.84, 1.04), gold); band.position.set(x, 0.4, 0); g.add(band); }
   const lock = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.1), gold); lock.position.set(0, 0.7, 0.53); g.add(lock);
-  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0), new THREE.MeshPhongMaterial({ color: 0x7fe3ff, emissive: 0x1a6b88, flatShading: true }));
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0), new THREE.MeshPhongMaterial({ color: purple ? 0xff7cf2 : 0x7fe3ff, emissive: purple ? 0x88207a : 0x1a6b88, flatShading: true }));
   gem.position.y = 2.4; g.add(gem);
-  const glow = makeRing(0xffd24a, 0.9); glow.scale.setScalar(1.8); g.add(glow);
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 14, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+  const glow = makeRing(purple ? 0xc77dff : 0xffd24a, 0.9); glow.scale.setScalar(1.8); g.add(glow);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 14, 10, 1, true), new THREE.MeshBasicMaterial({ color: purple ? 0xd9a8ff : 0xffe9a0, transparent: true, opacity: purple ? 0.26 : 0.18, side: THREE.DoubleSide, depthWrite: false }));
   beam.position.y = 7; g.add(beam);
   const pos = new THREE.Vector3();
   placeRandom(pos, 2.5, true, player ? player.pos : null, 18, 50);
   if (isSea()) { g.rotation.x = -Math.PI / 2; pos.z = SEA_H - 1.2; }
   g.position.copy(pos);
   worldRoot.add(g);
-  world.chest = { g, lid, gem, glow, pos, life: CHEST_LIFE, opened: false, openT: 0 };
-  toast('🎁 보물상자가 나타났다! 화살표를 따라가세요');
+  world.chest = { g, lid, gem, glow, pos, life: CHEST_LIFE, opened: false, openT: 0, purple: !!purple };
+  toast(purple ? '💜 보라색 보물상자가 나타났다! 엄청난 힘이 들어 있어요' : '🎁 보물상자가 나타났다! 화살표를 따라가세요');
+  arrowMats.forEach(m => m.color.setHex(purple ? 0xc77dff : 0xffd24a));
   sfx('chest');
 }
 function removeChest() { if (world.chest) { worldRoot.remove(world.chest.g); world.chest = null; } }
 
 const EVENTS = {
-  boost: { dur: 20, title: '⚡ 부스터! 엄청 빨라졌다', start() { player.boostT = 20; sfx('whoosh'); } },
+  boost: { dur: 20, get title() { return landK() ? '⚡ 부스터! 속도 2.5배 · 힘 2배' : '⚡ 부스터! 엄청 빨라졌다'; },
+    start() { player.boostT = 20; player.boostSpd = landK() ? 2.5 : 2.3; player.boostPow = landK() ? 2 : 1; sfx('whoosh'); } },
+  superBoost: { dur: 20, title: '💜 슈퍼 부스터! 속도 4배 · 힘 4배', start() { player.boostT = 20; player.boostSpd = 4; player.boostPow = 4; sfx('whoosh'); } },
   herbRevolt: { dur: 30, get title() { return isSea() ? '🐚 온순한 무리의 반란! 사냥꾼들을 마구 공격하세요' : '🌿 초식공룡의 반란! 육식공룡을 마구 공격하세요'; }, start() {} },
   landRevolt: { dur: 30, title: '🦖 육지 공룡의 반란! 내려온 익룡을 물어서 잡으세요', start() {
     let alive = world.pteros.filter(p => !p.dead).length;
@@ -559,13 +564,23 @@ const EVENTS = {
     for (const p of world.pteros) if (!p.dead && p.state === 'circle') p.t = rand(0.5, 3);
   } }
 };
+// 육지 백악기(중기·후기) 전용: 부스터 2.5배·2배, 보라색 보물상자
+const landK = () => !isSea() && (curEra.key === 'midK' || curEra.key === 'lateK');
+const PURPLE_CHANCE = 0.25, PURPLE_OFFSET = 60; // 일반 상자 한 번당 25% 확률로, 그 1분 뒤 보라색 상자
+let purpleAt = [];
+function planPurple() {
+  purpleAt = [];
+  if (!landK()) return;
+  for (let t = CHEST_FIRST; t + PURPLE_OFFSET + CHEST_LIFE < ROUND_TIME; t += CHEST_EVERY) if (Math.random() < PURPLE_CHANCE) purpleAt.push(t + PURPLE_OFFSET);
+}
 let ev = null;
 function openChest() {
   const ch = world.chest;
   if (!ch || ch.opened) return;
   ch.opened = true; ch.openT = 0;
+  if (ev) endEvent(true); // 앞 이벤트가 남아 있으면 조용히 정리
   const opts = isSea() ? (player.sp.diet === 'herb' ? ['boost', 'herbRevolt'] : ['boost']) : player.sp.diet === 'herb' ? ['boost', 'herbRevolt', 'landRevolt'] : ['boost', 'landRevolt'];
-  const type = pick(opts);
+  const type = ch.purple ? 'superBoost' : pick(opts);
   ev = { type, t: EVENTS[type].dur };
   EVENTS[type].start();
   toast(EVENTS[type].title);
@@ -573,11 +588,12 @@ function openChest() {
   setMusic('event');
   $('eventBar').classList.remove('hidden');
 }
-function endEvent() {
+function endEvent(quiet) {
   if (!ev) return;
   if (ev.type === 'landRevolt') for (const p of world.pteros) { if (!p.dead && p.hp < p.maxHp) p.hp = p.hpGhost = p.maxHp; }
   ev = null;
   if (player) player.boostT = 0;
+  if (quiet) return;
   $('eventBar').classList.add('hidden');
   toast('이벤트 끝!');
   setMusic('calm');
@@ -1108,10 +1124,11 @@ const respawnQueue = [], pteroRespawn = [];
 
 // 보물상자 방향 화살표
 const arrow = new THREE.Group();
+const arrowMats = [0, 1].map(() => new THREE.MeshBasicMaterial({ color: 0xffd24a }));
 {
-  const head = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 3), new THREE.MeshBasicMaterial({ color: 0xffd24a }));
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 3), arrowMats[0]);
   head.rotation.x = Math.PI / 2; head.position.z = 0.45; arrow.add(head);
-  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.7), new THREE.MeshBasicMaterial({ color: 0xffd24a }));
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.7), arrowMats[1]);
   stem.position.z = -0.25; arrow.add(stem);
   arrow.visible = false; worldRoot.add(arrow);
 }
@@ -1172,7 +1189,7 @@ function startGame() {
   try { if (nm) localStorage.setItem('dino_name', nm); } catch (_) {}
   clearWorld();
   if (terrainEra !== curEra.key) { clearTerrain(); buildTerrain(); }
-  elapsed = 0; shake = 0; nextChest = CHEST_FIRST; bossDone = false; unlockMsg = '';
+  elapsed = 0; shake = 0; nextChest = CHEST_FIRST; bossDone = false; unlockMsg = ''; planPurple();
   const pos = new THREE.Vector3();
   placeRandom(pos, 3, true);
   player = makeCreature('dino', selected, { isPlayer: true, pos, prot: 2 });
@@ -1369,6 +1386,7 @@ function step(dt) {
 
   // 보물상자
   if (!world.chest && elapsed >= nextChest) { makeChest(); nextChest = elapsed + CHEST_EVERY; }
+  else if (!world.chest && purpleAt.length && elapsed >= purpleAt[0]) { purpleAt.shift(); makeChest(true); }
   if (curEra.boss && !bossDone && elapsed >= BOSS_AT) spawnBoss();
   if (world.chest) {
     const ch = world.chest;
@@ -1411,7 +1429,7 @@ function step(dt) {
     if (c.kind === 'dino') spd *= 1 - 0.22 * (c.level - 1) / (MAX_LV - 1);
     if (!c.isPlayer && c.kind === 'dino') spd *= 0.93;
     if (c.sprintT > 0) spd *= 1.9;
-    if (c.boostT > 0) spd *= 2.3;
+    if (c.boostT > 0) spd *= c.boostSpd || 2.3;
     if (c.stunT > 0) spd = 0;
     const wet = c.kind !== 'bug' && inWater(c.pos.x, c.pos.z);
     if (wet) spd *= c.sp.swimmer ? 1.25 : 0.6;
@@ -1570,7 +1588,7 @@ function renderWorld(dt) {
     const boosting = c.isPlayer && c.boostT > 0;
     const hid = c.hideT > 0, stun = c.stunT > 0;
     for (const mm of m.mats) {
-      mm.emissive.setHex(fl ? 0x993322 : stun ? 0x2a2a66 : boosting ? (Math.sin(performance.now() / 70) > 0 ? 0x664400 : 0x332200) : (c.invT > 0 && c.isPlayer ? 0x333333 : 0x000000));
+      mm.emissive.setHex(fl ? 0x993322 : stun ? 0x2a2a66 : boosting ? (Math.sin(performance.now() / 70) > 0 ? (c.boostPow >= 4 ? 0x5a1a88 : 0x664400) : (c.boostPow >= 4 ? 0x2a0a44 : 0x332200)) : (c.invT > 0 && c.isPlayer ? 0x333333 : 0x000000));
       if (mm.transparent !== hid) { mm.transparent = hid; mm.needsUpdate = true; }
       mm.opacity = hid ? (c.isPlayer ? 0.45 : 0.25) : 1;
     }
@@ -1746,7 +1764,7 @@ window.__el = () => elapsed;
 window.__AU = AU; window.__sfx = sfx; window.__voice = voice;
 window.__dino = {
   world, get player() { return player; }, get state() { return state; }, get ev() { return ev; },
-  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, updateBreath: (c, dt) => updateBreath(c, dt), spawnBoss, get curEra() { return curEra; }, skip: () => { elapsed = ROUND_TIME - 0.5; },
+  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, updateBreath: (c, dt) => updateBreath(c, dt), spawnBoss, get curEra() { return curEra; }, get purpleAt() { return purpleAt; }, planPurple, skip: () => { elapsed = ROUND_TIME - 0.5; },
   setElapsed: t => { elapsed = t; }, freeze: () => { state = 'over'; }, makeCreature, openChest, makeChest, findBiteTarget, doBite, pauseGame, resumeGame,
   forceEvent: type => { ev = { type, t: EVENTS[type].dur }; EVENTS[type].start(); $('eventBar').classList.remove('hidden'); }
 };
