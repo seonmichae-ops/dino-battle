@@ -20,6 +20,8 @@ sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 5, far: 140 });
 sun.shadow.bias = -0.0015;
 scene.add(sun); scene.add(sun.target);
+// 게임 세계는 모두 worldRoot 아래에 둠. 바다 맵에서는 이 묶음을 90도 세워서 옆에서 보게 함
+const worldRoot = new THREE.Group(); scene.add(worldRoot);
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -108,7 +110,7 @@ function floatText(pos, text, color, size) {
   ctx.strokeText(text, 128, 48); ctx.fillStyle = color; ctx.fillText(text, 128, 48);
   tex.needsUpdate = true;
   sp.position.copy(pos);
-  scene.add(sp);
+  worldRoot.add(sp);
   floaters.push({ sp, t: 0 });
 }
 
@@ -116,15 +118,18 @@ function floatText(pos, text, color, size) {
 //  지형
 // ====================================================================
 const world = { obstacles: [], ponds: [], ferns: [], creatures: [], pteros: [], chunks: [], chest: null, decor: new THREE.Group() };
-scene.add(world.decor);
+worldRoot.add(world.decor);
 
 let terrainEra = null;
 function clearTerrain() {
   while (world.decor.children.length) world.decor.remove(world.decor.children[0]);
-  for (const o of world.obstacles) { if (o.ring) scene.remove(o.ring); if (o.lock) scene.remove(o.lock); }
+  for (const o of world.obstacles) { if (o.ring) worldRoot.remove(o.ring); if (o.lock) worldRoot.remove(o.lock); }
   world.obstacles.length = 0; world.ponds = []; terrainEra = null;
 }
 function buildTerrain() {
+  worldRoot.rotation.x = isSea() ? Math.PI / 2 : 0; // 바다: 세계를 세워서 옆에서 봄
+  sun.castShadow = !isSea();
+  if (isSea()) { buildSeaTerrain(); return; }
   const L = curEra.look;
   terrainEra = curEra.key;
   scene.background = new THREE.Color(L.sky); scene.fog.color.setHex(L.sky);
@@ -223,13 +228,22 @@ function buildTerrain() {
       o.ring = makeRing(0x4cd964, 0.9); o.ring.scale.setScalar(r + 0.9); o.ring.position.set(x, 0.07, z); o.ring.visible = false;
       o.lock = makeLabel(`🔒 Lv.${o.rule.lv}부터`, '#ffe9a8'); o.lock.position.set(x, topY, z); o.lock.visible = false;
       o.lock.scale.set(3.2, 0.6, 1);
-      scene.add(o.ring, o.lock);
+      worldRoot.add(o.ring, o.lock);
     }
     world.obstacles.push(o);
   }
 }
 
 function makeFern() {
+  if (isSea()) { // 바다: 바닥의 조개 또는 떠다니는 해파리
+    const onFloor = Math.random() < 0.55, grp = makeSeaFood(onFloor);
+    const ring = makeRing(0x4cd964, 0.8); ring.scale.setScalar(0.65); grp.add(ring);
+    worldRoot.add(grp);
+    const f = { pos: new THREE.Vector3(), mesh: grp, ring, active: true, t: 0, r: 0.5 };
+    placeRandom(f.pos, 2, true); if (onFloor) f.pos.z = SEA_H - 1.0;
+    grp.position.copy(f.pos);
+    return f;
+  }
   const grp = new THREE.Group();
   for (let k = 0; k < 5; k++) {
     const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.1, 4), mat(pick(curEra.look.fern)));
@@ -239,18 +253,30 @@ function makeFern() {
     grp.add(leaf);
   }
   const ring = makeRing(0x4cd964, 0.8); ring.scale.setScalar(0.65); grp.add(ring);
-  scene.add(grp);
+  worldRoot.add(grp);
   const f = { pos: new THREE.Vector3(), mesh: grp, ring, active: true, t: 0, r: 0.5 };
   placeRandom(f.pos, 2, true);
   grp.position.copy(f.pos);
   return f;
 }
 
-function inWater(x, z) { return world.ponds.some(p => Math.hypot(x - p.x, z - p.z) < p.r); }
+// ---- 맵 경계: 육지는 원형(MAP_R), 바다는 옆에서 본 직사각형(가로 ±SEA_W, 깊이 ±SEA_H; z가 −면 수면, +면 바닥) ----
+const SEA_W = 100, SEA_H = 30;
+const isSea = () => !!(curEra && curEra.sea);
+function randMapXZ(m) {
+  if (isSea()) return [rand(-SEA_W + m, SEA_W - m), rand(-SEA_H + m, SEA_H - m)];
+  const a = rand(0, Math.PI * 2), d = Math.sqrt(Math.random()) * (MAP_R - m); return [Math.cos(a) * d, Math.sin(a) * d];
+}
+function edgeGap(p) { return isSea() ? Math.min(SEA_W - Math.abs(p.x), SEA_H - Math.abs(p.z)) : MAP_R - Math.hypot(p.x, p.z); }
+function clampMap(p, m) {
+  if (isSea()) { p.x = clamp(p.x, -SEA_W + m, SEA_W - m); p.z = clamp(p.z, -SEA_H + m, SEA_H - m); return; }
+  const pr = Math.hypot(p.x, p.z); if (pr > MAP_R - m) { p.x *= (MAP_R - m) / pr; p.z *= (MAP_R - m) / pr; }
+}
+function inwardAngle(p) { return isSea() ? Math.atan2(-p.z / SEA_H, -p.x / SEA_W) : Math.atan2(-p.z, -p.x); }
+function inWater(x, z) { if (isSea()) return false; return world.ponds.some(p => Math.hypot(x - p.x, z - p.z) < p.r); }
 function placeRandom(v, pad, avoidWater, awayFrom, minDist, maxDist) {
   for (let t = 0; t < 60; t++) {
-    const a = rand(0, Math.PI * 2), d = Math.sqrt(Math.random()) * (MAP_R - 6);
-    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const [x, z] = randMapXZ(6);
     if (avoidWater && inWater(x, z)) continue;
     if (world.obstacles.some(o => !o.gone && Math.hypot(o.x - x, o.z - z) < o.r + pad)) continue;
     if (awayFrom) {

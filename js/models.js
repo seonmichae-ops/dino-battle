@@ -455,6 +455,11 @@ function buildSmoothDino(sp) {
 
 function buildModel(sp) {
   if (SMOOTH_BODIES.includes(sp.body)) return buildSmoothDino(sp);
+  if (typeof SEA_BODIES !== 'undefined') {
+    if (SEA_BODIES.includes(sp.body)) return buildSwimmer(sp);
+    if (['ammonite', 'belemnite', 'baculites'].includes(sp.body)) return buildSeaPrey(sp);
+    if (sp.body === 'bug' && isSea()) return buildFishSchool();
+  }
   const g = new THREE.Group();
   g.rotation.order = 'YXZ';
   const mBody = ownMat(sp.color), mBelly = ownMat(sp.belly || sp.color), mStripe = ownMat(sp.stripe || sp.color);

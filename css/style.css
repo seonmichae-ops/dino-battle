@@ -94,3 +94,11 @@
   body:not(.touch) .tc { display: none; }
   body.touch .kb, body.touch .abtn small { display: none; }
   #inAppBar { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 0 auto 10px; padding: 8px 12px; max-width: 560px; border-radius: 12px; background: rgba(255,210,74,.18); border: 2px solid #ffd24a; font-size: 15px; }
+  /* 바다 */
+  #seaTabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 8px; }
+  .eraTab.sea { background: rgba(80,180,230,.14); }
+  .eraTab.sea.on { border-color: #7fd6ff; background: rgba(80,180,230,.3); }
+  #airb > i { background: linear-gradient(90deg,#5ac8fa,#bff4ff); }
+  #airb.low > i { background: linear-gradient(90deg,#ff6b5a,#ffb15a); animation: airblink .5s infinite alternate; }
+  @keyframes airblink { from { opacity: 1; } to { opacity: .35; } }
+  #introCap { position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%); z-index: 30; color: #fff; font-size: 26px; text-align: center; text-shadow: 0 2px 8px rgba(0,0,0,.7); width: 90vw; word-break: keep-all; pointer-events: none; }

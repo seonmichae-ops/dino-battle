@@ -18,6 +18,7 @@
 <meta name="apple-mobile-web-app-title" content="공룡 배틀">
 </head>
 <body>
+<div id="introCap" class="hidden"></div>
 <canvas id="c"></canvas>
 
 <div id="hud" class="hidden">
@@ -27,6 +28,7 @@
     <div class="lbl" id="hpTxt">체력</div>
     <div class="bar" id="xpb"><i></i></div>
     <div class="lbl" id="xpTxt">성장</div>
+    <div id="airRow" class="hidden"><div class="bar" id="airb"><i></i></div><div class="lbl" id="airTxt">숨</div></div>
   </div>
   <div id="topMid"><div id="timer">10:00</div><button id="pauseBtn" class="tbtn" title="일시정지 (Enter)">⏸</button><button id="muteBtn" class="tbtn" title="소리 켜기/끄기">🔊</button><button id="fsBtn" class="tbtn" title="전체 화면">⛶</button></div>
   <div id="eventBar" class="hidden"></div>
@@ -46,6 +48,7 @@
     <h1 id="menuTitle">🦖 공룡 배틀</h1>
     <div class="sub">먹고 자라서 최강 공룡이 되세요! 한 시대에서 서로 다른 공룡 3종을 Lv.10(성체)까지 키우면 다음 시대가 열려요.</div>
     <div id="eraTabs"></div>
+    <div id="seaTabs"></div>
     <div id="eraNote"></div>
     <div id="nameRow"><input id="nameIn" maxlength="8" placeholder="내 이름 (최대 8자)" autocomplete="off"><button class="smallBtn" id="fsMenuBtn">⛶ 전체 화면</button><button class="smallBtn hidden" id="installBtn">📲 앱으로 설치</button></div>
     <div id="inAppBar" class="hidden"><span id="inAppMsg"></span><button class="smallBtn" id="inAppBtn">크롬으로 열기</button></div>
@@ -85,8 +88,11 @@
 
 <script src="js/lib/three.min.js"></script>
 <script src="js/data.js"></script>
+<script src="js/sea-data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/models.js"></script>
+<script src="js/sea-models.js"></script>
 <script src="js/game.js"></script>
+<script src="js/sea-game.js"></script>
 </body>
 </html>

@@ -13,7 +13,9 @@ function makeCreature(kind, key, opts = {}) {
   if (opts.pos) c.pos.copy(opts.pos); else placeRandom(c.pos, 1.5, kind === 'dino');
   c.model = buildModel(sp);
   c.holder = new THREE.Group();
-  c.holder.add(c.model.group);
+  c.pivot = new THREE.Group(); c.holder.add(c.pivot); // 바다에서 옆모습으로 돌리는 피벗
+  c.pivot.add(c.model.group);
+  c.air = 1; c.airHurtT = 0; c.seaFace = 1;
   c.shadow = new THREE.Mesh(shadowGeo, shadowMat); c.shadow.position.y = 0.03; c.holder.add(c.shadow);
   if (c.model.extra.smooth) c.shadow.visible = false; // 진짜 그림자를 씀
   c.ring = makeRing(0xffd24a); c.holder.add(c.ring);
@@ -22,7 +24,7 @@ function makeCreature(kind, key, opts = {}) {
   } else if (kind === 'prey') {
     c.tag = makeCanvasSprite(192, 36, 1.7, 0.32); c.tagHasName = false; c.holder.add(c.tag);
   }
-  scene.add(c.holder);
+  worldRoot.add(c.holder);
   if (kind === 'dino' && c.level > 1) for (let l = 1; l < c.level; l++) c.totalXp += xpNeed(l);
   updateSize(c, true);
   world.creatures.push(c);
@@ -44,7 +46,7 @@ function updateSize(c, fill) {
 }
 
 function removeCreature(c) {
-  scene.remove(c.holder);
+  worldRoot.remove(c.holder);
   if (c.tag) { c.tag.material.map.dispose(); c.tag.material.dispose(); }
   c.ring.material.dispose();
   c.model.mats.forEach(m => m.dispose());
@@ -71,9 +73,9 @@ function gain(c, xp) {
     drawTag(c);
     if (c.isPlayer) {
       let msg = c.level >= MAX_LV ? `최대 성장! ${c.sp.name} 성체 완성!` : `레벨 업! Lv.${c.level}`;
-      if (c.sp.diet === 'herb' && c.level === 3) msg = `Lv.3! 이제 ${curEra.trees.cycad}를 먹을 수 있어요 🌴`;
-      if (c.sp.diet === 'herb' && c.level === 7) msg = `Lv.7! 이제 ${curEra.trees.conifer}도 먹을 수 있어요 🌲`;
-      if (c.level >= MAX_LV && c.sp.diet === 'herb') msg = isTouch ? 'Lv.10! 새 스킬 「짓밟기」 버튼 획득! 🦶' : 'Lv.10! 새 스킬 「짓밟기」(W) 획득! 🦶';
+      if (!isSea() && c.sp.diet === 'herb' && c.level === 3) msg = `Lv.3! 이제 ${curEra.trees.cycad}를 먹을 수 있어요 🌴`;
+      if (!isSea() && c.sp.diet === 'herb' && c.level === 7) msg = `Lv.7! 이제 ${curEra.trees.conifer}도 먹을 수 있어요 🌲`;
+      if (c.level >= MAX_LV && c.sp.diet === 'herb') { const nm = isSea() ? '들이받기' : '짓밟기'; msg = isTouch ? `Lv.10! 새 스킬 「${nm}」 버튼 획득! 💥` : `Lv.10! 새 스킬 「${nm}」(W) 획득! 💥`; }
       if (c.level >= MAX_LV && c.sp.diet !== 'herb') msg = 'Lv.10! 이제 같은 종도 잡아먹을 수 있어요 🍖';
       toast(msg); sfx('up'); voice(c, 1.2);
       if (c.level >= MAX_LV) unlockNext();
@@ -98,10 +100,10 @@ function spawnChunks(pos, srcSize, totalXp, n) {
     const sc = clamp(0.38 + srcSize * 0.18, 0.4, 0.9);
     g.scale.setScalar(sc);
     const ring = makeRing(0x4cd964, 0.85); ring.scale.setScalar(0.75); ring.position.y = -0.3; g.add(ring);
-    scene.add(g);
+    worldRoot.add(g);
     const a = (i / n) * Math.PI * 2 + rand(-0.3, 0.3), d = srcSize * 0.5 + rand(0.6, 1.4);
     const to = new THREE.Vector3(pos.x + Math.cos(a) * d, 0, pos.z + Math.sin(a) * d);
-    const pr = Math.hypot(to.x, to.z); if (pr > MAP_R - 2) to.multiplyScalar((MAP_R - 2) / pr);
+    clampMap(to, 2);
     world.chunks.push({ mesh: g, ring, from: pos.clone(), pos: to, xp: per, t: 0, life: 25, r: 0.4 * sc + 0.2, dead: false, isChunk: true, spin: rand(0, 6) });
   }
 }
@@ -226,7 +228,7 @@ function doBite(A, tgt) {
       }
       break;
     case 'chunk':
-      o.dead = true; scene.remove(o.mesh); o.ring.material.dispose();
+      o.dead = true; worldRoot.remove(o.mesh); o.ring.material.dispose();
       gain(A, o.xp);
       A.hp = Math.min(A.maxHp, A.hp + A.maxHp * 0.08);
       sfxAt('crunch', A.pos, A.isPlayer ? 1 : 0.55);
@@ -258,20 +260,25 @@ function doBite(A, tgt) {
 let unlockMsg = '';
 // 성체 달성 기록 → 이 시대에서 서로 다른 3종이 모이면 다음 시대 해금
 function unlockNext() {
-  const i = eraIdx(curEra), key = player.key;
+  const key = player.key, trk = curEra.sea ? SEA_ERAS : ERAS, i = trk.indexOf(curEra);
   const list = adultsByEra[curEra.key] = adultsOf(curEra.key);
   if (list.includes(key)) return; // 이미 성체를 달성한 종
   list.push(key);
   try { localStorage.setItem('dino_adults', JSON.stringify(adultsByEra)); } catch (_) {}
-  const n = list.length, next = ERAS[i + 1];
-  if (next && i >= unlockedIdx && n >= UNLOCK_NEED) {
-    unlockedIdx = i + 1;
-    try { localStorage.setItem('dino_unlock', String(unlockedIdx)); } catch (_) {}
-    unlockMsg = `🔓 성체 ${n}종 달성! 새 시대 「${next.name}」가 열렸어요!`;
-  } else if (next && i >= unlockedIdx) {
-    unlockMsg = `🦖 ${curEra.name} 성체 ${n}/${UNLOCK_NEED}종! ${UNLOCK_NEED - n}종 더 키우면 「${next.name}」가 열려요`;
-  } else unlockMsg = `🦖 ${curEra.name} 성체 도감 ${n}종째!`;
-  setTimeout(() => { if (state === 'play') { warn(unlockMsg); sfx('chest'); } }, 1900);
+  const n = list.length, next = trk[i + 1], ul = curEra.sea ? seaUnlockedIdx : unlockedIdx;
+  const msgs = [];
+  if (next && i >= ul && n >= UNLOCK_NEED) {
+    if (curEra.sea) { seaUnlockedIdx = i + 1; try { localStorage.setItem('dino_unlock_sea', String(seaUnlockedIdx)); } catch (_) {} }
+    else { unlockedIdx = i + 1; try { localStorage.setItem('dino_unlock', String(unlockedIdx)); } catch (_) {} }
+    msgs.push(`🔓 성체 ${n}종 달성! 새 시대 「${next.name}」가 열렸어요!`);
+  } else if (next && i >= ul) msgs.push(`🦖 ${curEra.name} 성체 ${n}/${UNLOCK_NEED}종! ${UNLOCK_NEED - n}종 더 키우면 「${next.name}」가 열려요`);
+  else msgs.push(`🦖 ${curEra.name} 성체 도감 ${n}종째!`);
+  if (key === SEA_KEY_SPECIES && !curEra.sea && seaUnlockedIdx < 0) { // 스피노 성체 = 바다의 열쇠
+    seaUnlockedIdx = 0; try { localStorage.setItem('dino_unlock_sea', '0'); } catch (_) {}
+    msgs.unshift('🌊 스피노사우루스 성체! 바다가 열렸어요!');
+  }
+  unlockMsg = msgs.join('\n');
+  setTimeout(() => { if (state === 'play') { warn(msgs[0]); sfx('chest'); } }, 1900);
 }
 
 const STOMP = { name: '짓밟기', type: 'stomp', cd: 6 };
@@ -279,7 +286,7 @@ const SKILL_KEYS = ['Q', 'W', 'E'];
 // 스킬 목록: 기본 스킬(Q) + 초식 Lv.10 짓밟기(W). 새 스킬은 E 순서로 추가
 function skillsOf(c) {
   const l = [c.sp.skill];
-  if (c.kind === 'dino' && c.sp.diet === 'herb' && c.level >= MAX_LV) l.push(STOMP);
+  if (c.kind === 'dino' && c.sp.diet === 'herb' && c.level >= MAX_LV) l.push(isSea() ? Object.assign({}, STOMP, { name: '들이받기' }) : STOMP);
   return l;
 }
 function useSkill(c, i) {
@@ -376,7 +383,7 @@ const waves = [];
 function spawnWave(pos, R, color) {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: color || 0xfff1a8, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; m.position.set(pos.x, 0.1, pos.z);
-  scene.add(m);
+  worldRoot.add(m);
   waves.push({ m, t: 0, R });
 }
 
@@ -406,11 +413,11 @@ function makePtero(near) {
     const pivot = new THREE.Group(); pivot.add(new THREE.Mesh(geo, mw)); g.add(pivot); wings.push({ pivot, sx });
   }
   g.scale.setScalar(PT.scale);
-  scene.add(g);
+  worldRoot.add(g);
   const sh = new THREE.Mesh(new THREE.CircleGeometry(1.8, 12), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
-  sh.rotation.x = -Math.PI / 2; scene.add(sh);
-  const ring = makeRing(0x4cd964, 0.9); ring.scale.setScalar(1.6); ring.visible = false; scene.add(ring);
-  const tag = makeCanvasSprite(192, 36, 2.0, 0.38); tag.visible = false; scene.add(tag);
+  sh.rotation.x = -Math.PI / 2; worldRoot.add(sh);
+  const ring = makeRing(0x4cd964, 0.9); ring.scale.setScalar(1.6); ring.visible = false; worldRoot.add(ring);
+  const tag = makeCanvasSprite(192, 36, 2.0, 0.38); tag.visible = false; worldRoot.add(tag);
   const cx = near ? near.x + rand(-15, 15) : rand(-30, 30), cz = near ? near.z + rand(-15, 15) : rand(-30, 30);
   const p = { g, sh, ring, tag, wings, state: 'circle', t: rand(10, 18), ang: rand(0, 6), cx, cz, pos: new THREE.Vector3(cx, 16, cz), target: null, flap: 0,
     hp: PT.hp, maxHp: PT.hp, hpGhost: PT.hp, ghostDelay: 0, dead: false, flash: 0, tagHasName: false, kind: 'ptero', name: PT.name, s: 0.5 * PT.scale };
@@ -427,7 +434,7 @@ function damagePtero(p, dmg, A) {
   if (A && A.isPlayer) sfx('hit');
   if (p.hp <= 0) {
     p.dead = true;
-    scene.remove(p.g, p.sh, p.ring, p.tag);
+    worldRoot.remove(p.g, p.sh, p.ring, p.tag);
     const ground = new THREE.Vector3(p.pos.x, 0, p.pos.z);
     if (A && isMeatEater(A)) spawnChunks(ground, 1.2, 60, 4);
     else if (A) gain(A, 60);
@@ -493,7 +500,7 @@ function updatePtero(p, dt) {
     p.t += dt;
     p.pos.y += dt * 8;
     p.pos.x += Math.cos(p.ang) * dt * 6; p.pos.z += Math.sin(p.ang) * dt * 6;
-    const pr = Math.hypot(p.pos.x, p.pos.z); if (pr > MAP_R) { p.pos.x *= MAP_R / pr; p.pos.z *= MAP_R / pr; }
+    clampMap(p.pos, 0);
     if (p.pos.y >= 16) { p.state = 'circle'; p.t = rand(14, 24); p.cx = p.pos.x - Math.cos(p.ang) * 22; p.cz = p.pos.z - Math.sin(p.ang) * 22; }
   }
   p.g.position.copy(p.pos);
@@ -534,17 +541,18 @@ function makeChest() {
   beam.position.y = 7; g.add(beam);
   const pos = new THREE.Vector3();
   placeRandom(pos, 2.5, true, player ? player.pos : null, 18, 50);
+  if (isSea()) { g.rotation.x = -Math.PI / 2; pos.z = SEA_H - 1.2; }
   g.position.copy(pos);
-  scene.add(g);
+  worldRoot.add(g);
   world.chest = { g, lid, gem, glow, pos, life: CHEST_LIFE, opened: false, openT: 0 };
   toast('🎁 보물상자가 나타났다! 화살표를 따라가세요');
   sfx('chest');
 }
-function removeChest() { if (world.chest) { scene.remove(world.chest.g); world.chest = null; } }
+function removeChest() { if (world.chest) { worldRoot.remove(world.chest.g); world.chest = null; } }
 
 const EVENTS = {
   boost: { dur: 20, title: '⚡ 부스터! 엄청 빨라졌다', start() { player.boostT = 20; sfx('whoosh'); } },
-  herbRevolt: { dur: 30, title: '🌿 초식공룡의 반란! 육식공룡을 마구 공격하세요', start() {} },
+  herbRevolt: { dur: 30, get title() { return isSea() ? '🐚 온순한 무리의 반란! 사냥꾼들을 마구 공격하세요' : '🌿 초식공룡의 반란! 육식공룡을 마구 공격하세요'; }, start() {} },
   landRevolt: { dur: 30, title: '🦖 육지 공룡의 반란! 내려온 익룡을 물어서 잡으세요', start() {
     let alive = world.pteros.filter(p => !p.dead).length;
     while (alive < 4) { makePtero(player.pos); alive++; }
@@ -556,7 +564,7 @@ function openChest() {
   const ch = world.chest;
   if (!ch || ch.opened) return;
   ch.opened = true; ch.openT = 0;
-  const opts = player.sp.diet === 'herb' ? ['boost', 'herbRevolt', 'landRevolt'] : ['boost', 'landRevolt'];
+  const opts = isSea() ? (player.sp.diet === 'herb' ? ['boost', 'herbRevolt'] : ['boost']) : player.sp.diet === 'herb' ? ['boost', 'herbRevolt', 'landRevolt'] : ['boost', 'landRevolt'];
   const type = pick(opts);
   ev = { type, t: EVENTS[type].dur };
   EVENTS[type].start();
@@ -646,8 +654,7 @@ function think(c) {
   if (threat && threatD < fearR) {
     const l = Math.hypot(fx, fz) || 1;
     c.want.set(fx / l, 0, fz / l);
-    const pr = Math.hypot(c.pos.x, c.pos.z);
-    if (pr > MAP_R - 10) { c.want.x -= c.pos.x / pr * 0.8; c.want.z -= c.pos.z / pr * 0.8; c.want.normalize(); }
+    if (edgeGap(c.pos) < 10) { const ia = inwardAngle(c.pos); c.want.x += Math.cos(ia) * 0.8; c.want.z += Math.sin(ia) * 0.8; c.want.normalize(); }
     c.goal = null;
     if (c.kind === 'dino' && c.sp.diet === 'herb' && c.level >= MAX_LV && isMeatEater(threat) && threatD < c.r + 2.4 + c.s * 0.6) useSkill(c, 1);
     if (c.kind === 'dino' && c.cds[0] <= 0) {
@@ -661,7 +668,7 @@ function think(c) {
   c.goal = null;
   c.wanderA += rand(-0.7, 0.7);
   const pr = Math.hypot(c.pos.x, c.pos.z);
-  if (pr > MAP_R - 12) c.wanderA = Math.atan2(-c.pos.z, -c.pos.x) + rand(-0.5, 0.5);
+  if (edgeGap(c.pos) < 12) c.wanderA = inwardAngle(c.pos) + rand(-0.5, 0.5);
   c.want.set(Math.cos(c.wanderA), 0, Math.sin(c.wanderA)).multiplyScalar(c.kind === 'prey' ? 0.5 : 0.6);
 }
 
@@ -966,6 +973,7 @@ function scheduleMusic() {
   if (AU.nextT < c.currentTime - 0.05) AU.nextT = c.currentTime + 0.05;
   while (AU.nextT < c.currentTime + 0.35) {
     const t = AU.nextT, s = AU.step;
+    if (isSea()) { AU.nextT += scheduleSeaStep(t, s); AU.step++; continue; }
     if (AU.mode === 'calm') {
       // 잔잔한 배경음: 부드러운 화음 + 드문드문 맑은 음 + 바람
       if (s % 8 === 0) CHORDS[((s / 8) | 0) % 4].forEach(f => pad(f, t, 4.3, 0.05));
@@ -1001,6 +1009,17 @@ let selected = 'coelophysis';
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 function buildCards() {
   const tabs = $('eraTabs'); tabs.innerHTML = '';
+  const seaTabs = $('seaTabs'); seaTabs.innerHTML = '';
+  SEA_ERAS.forEach((e, i) => {
+    const t = document.createElement('button'); const locked = i > seaUnlockedIdx;
+    t.className = 'eraTab sea' + (e === curEra ? ' on' : '') + (locked ? ' locked' : '');
+    t.innerHTML = `${locked ? '🔒 ' : '🌊 '}${e.name}<small>${e.time}</small>`;
+    t.onclick = () => {
+      if (locked) { $('eraNote').textContent = i === 0 ? `🔒 육지 「백악기 중기」에서 스피노사우루스를 Lv.10(성체)까지 키우면 바다가 열려요!` : `🔒 「${SEA_ERAS[i - 1].name}」에서 서로 다른 생물 ${UNLOCK_NEED}종을 Lv.10(성체)까지 키우면 열려요! (지금 ${Math.min(adultsOf(SEA_ERAS[i - 1].key).length, UNLOCK_NEED)}/${UNLOCK_NEED})`; return; }
+      if (e !== curEra) setEra(e.key);
+    };
+    seaTabs.appendChild(t);
+  });
   ERAS.forEach((e, i) => {
     const t = document.createElement('button'); const locked = i > unlockedIdx;
     t.className = 'eraTab' + (e === curEra ? ' on' : '') + (locked ? ' locked' : '');
@@ -1011,18 +1030,18 @@ function buildCards() {
     };
     tabs.appendChild(t);
   });
-  const nx = ERAS[eraIdx(curEra) + 1], done = adultsOf(curEra.key).length;
-  $('eraNote').textContent = curEra.sub + (nx && eraIdx(curEra) >= unlockedIdx ? ` · 성체 ${Math.min(done, UNLOCK_NEED)}/${UNLOCK_NEED}종 → 「${nx.name}」 열기` : '');
-  $('menuTitle').textContent = `🦖 공룡 배틀 : ${curEra.name}`;
+  const trk = curEra.sea ? SEA_ERAS : ERAS, ti = trk.indexOf(curEra), nx = trk[ti + 1], done = adultsOf(curEra.key).length, ul = curEra.sea ? seaUnlockedIdx : unlockedIdx;
+  $('eraNote').textContent = curEra.sub + (nx && ti >= ul ? ` · 성체 ${Math.min(done, UNLOCK_NEED)}/${UNLOCK_NEED}종 → 「${nx.name}」 열기` : '') + (curEra.key === 'midK' && seaUnlockedIdx < 0 ? ' · 🌊 스피노사우루스 성체 → 바다 열기' : '');
+  $('menuTitle').textContent = `${curEra.sea ? '🌊' : '🦖'} 공룡 배틀 : ${curEra.name}`;
   const wrap = $('cards'); wrap.innerHTML = '';
   for (const [k, sp] of Object.entries(SPECIES)) {
-    if (sp.era !== curEra.key || sp.boss) continue;
+    if (!inEra(sp, curEra.key) || sp.boss) continue;
     const d = document.createElement('div');
     d.className = 'card' + (k === selected ? ' sel' : '');
     d.innerHTML = `<div class="sw" style="background:linear-gradient(90deg,${hex(sp.color)} 70%,${hex(sp.stripe || sp.color)})"></div>
-      <div class="cn">${sp.name}${adultsOf(sp.era).includes(k) ? ' <span class="adult" title="성체 달성">⭐</span>' : ''}</div>
+      <div class="cn">${sp.name}${adultsOf(curEra.key).includes(k) ? ' <span class="adult" title="성체 달성">⭐</span>' : ''}</div>
       <div>${sp.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
-      <div class="sk">스킬<span class="kb">(Q)</span>: ${sp.skill.name}${sp.diet === 'herb' ? '<br>Lv.10 스킬<span class="kb">(W)</span>: 짓밟기' : ''}</div>
+      <div class="sk">스킬<span class="kb">(Q)</span>: ${sp.skill.name}${sp.diet === 'herb' ? `<br>Lv.10 스킬<span class="kb">(W)</span>: ${curEra.sea ? '들이받기' : '짓밟기'}` : ''}${curEra.sea && sp.breath ? '<br>🫧 수면에서 숨을 쉬어야 해요' : ''}</div>
       <div class="fact">${sp.fact}</div>`;
     d.onclick = () => { selected = k; buildCards(); };
     wrap.appendChild(d);
@@ -1030,12 +1049,12 @@ function buildCards() {
 }
 function setEra(key) {
   curEra = ERA[key];
-  if (SPECIES[selected].era !== key) selected = curEra.pick;
+  if (!inEra(SPECIES[selected], key)) selected = curEra.pick;
   try { localStorage.setItem('dino_era', key); } catch (_) {}
   clearWorld(); clearTerrain(); demoWorld();
   buildCards();
 }
-try { const k = localStorage.getItem('dino_era'); if (k && ERA[k] && eraIdx(ERA[k]) <= unlockedIdx) { curEra = ERA[k]; selected = curEra.pick; } } catch (_) {}
+try { const k = localStorage.getItem('dino_era'); if (k && ERA[k] && (ERA[k].sea ? SEA_ERAS.indexOf(ERA[k]) <= seaUnlockedIdx : eraIdx(ERA[k]) <= unlockedIdx)) { curEra = ERA[k]; selected = curEra.pick; } } catch (_) {}
 buildCards();
 
 function updateHUD() {
@@ -1094,23 +1113,23 @@ const arrow = new THREE.Group();
   head.rotation.x = Math.PI / 2; head.position.z = 0.45; arrow.add(head);
   const stem = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.7), new THREE.MeshBasicMaterial({ color: 0xffd24a }));
   stem.position.z = -0.25; arrow.add(stem);
-  arrow.visible = false; scene.add(arrow);
+  arrow.visible = false; worldRoot.add(arrow);
 }
 
 function clearWorld() {
   for (const c of world.creatures) if (!c.dead) removeCreature(c);
   world.creatures.length = 0;
-  for (const f of world.ferns) scene.remove(f.mesh);
+  for (const f of world.ferns) worldRoot.remove(f.mesh);
   world.ferns.length = 0;
-  for (const p of world.pteros) scene.remove(p.g, p.sh, p.ring, p.tag);
+  for (const p of world.pteros) worldRoot.remove(p.g, p.sh, p.ring, p.tag);
   world.pteros.length = 0;
-  for (const ch of world.chunks) scene.remove(ch.mesh);
+  for (const ch of world.chunks) worldRoot.remove(ch.mesh);
   world.chunks.length = 0;
-  for (const w of waves) scene.remove(w.m);
+  for (const w of waves) worldRoot.remove(w.m);
   waves.length = 0;
-  for (const f of floaters) scene.remove(f.sp);
+  for (const f of floaters) worldRoot.remove(f.sp);
   floaters.length = 0;
-  for (const d of dusts) scene.remove(d.m);
+  for (const d of dusts) worldRoot.remove(d.m);
   dusts.length = 0;
   for (const o of world.obstacles) if (o.rule) { o.gone = false; o.bites = o.rule.bites; o.grp.visible = true; o.grp.scale.setScalar(1); }
   removeChest();
@@ -1133,17 +1152,21 @@ function spawnBot(maxLv, prot) {
 }
 function spawnPrey(kind) {
   if (kind === 'prey') {
+    if (isSea()) { const pos = new THREE.Vector3(); placeRandom(pos, 1.5, true); return makeCreature('prey', curEra.prey, { baseS: rand(0.5, 0.95), pos }); }
     const pd = pick(world.ponds);
     const a = rand(0, 6), d = pd.r + rand(2, 10);
     const pos = new THREE.Vector3(pd.x + Math.cos(a) * d, 0, pd.z + Math.sin(a) * d);
-    if (Math.hypot(pos.x, pos.z) > MAP_R - 4) placeRandom(pos, 1.5, true);
+    if (edgeGap(pos) < 4) placeRandom(pos, 1.5, true);
     return makeCreature('prey', curEra.prey, { baseS: rand(0.5, 0.95), pos });
   }
   return makeCreature('bug', 'bug', { baseS: rand(0.34, 0.42) });
 }
 
+let seaIntro = null;
 function startGame() {
   initAudio();
+  let seen = true; try { seen = localStorage.getItem('dino_sea_intro') === '1'; } catch (_) {}
+  if (isSea() && !seen && !seaIntro && !window.__skipIntro) { beginSeaIntro(); return; }
   const nm = ($('nameIn').value || '').trim().slice(0, 8);
   playerName = nm || '나';
   try { if (nm) localStorage.setItem('dino_name', nm); } catch (_) {}
@@ -1158,7 +1181,8 @@ function startGame() {
   for (let i = 0; i < N_RHYNCHO; i++) spawnPrey('prey');
   for (let i = 0; i < N_BUGS; i++) spawnPrey('bug');
   for (let i = 0; i < N_FERNS; i++) world.ferns.push(makeFern());
-  makePtero(); makePtero();
+  if (!isSea()) { makePtero(); makePtero(); }
+  $('airRow').classList.toggle('hidden', !(isSea() && player.sp.breath));
   $('skillName').innerHTML = `${player.sp.skill.name}<br><small>Q</small>`;
   $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('pause').classList.add('hidden'); $('hud').classList.remove('hidden');
   state = 'play';
@@ -1380,7 +1404,9 @@ function step(dt) {
       c.aiT -= dt;
       if (c.aiT <= 0) { c.aiT = 0.25 + Math.random() * 0.15; think(c); }
       steerToGoal(c);
+      if (isSea() && c.sp.breath && c.air < 0.32) { c.want.set(rand(-0.2, 0.2), 0, -1).normalize(); c.goal = null; } // 숨 쉬러 수면으로
     }
+    if (isSea() && c.sp.breath && c.kind === 'dino') updateBreath(c, dt);
     let spd = c.sp.speed;
     if (c.kind === 'dino') spd *= 1 - 0.22 * (c.level - 1) / (MAX_LV - 1);
     if (!c.isPlayer && c.kind === 'dino') spd *= 0.93;
@@ -1403,7 +1429,8 @@ function step(dt) {
       if (d2 < rr * rr) { const d = Math.sqrt(d2) || 0.01; c.pos.x = o.x + dx / d * rr; c.pos.z = o.z + dz / d * rr; }
     }
     const pr = Math.hypot(c.pos.x, c.pos.z);
-    if (pr > MAP_R - c.r) { c.pos.x *= (MAP_R - c.r) / pr; c.pos.z *= (MAP_R - c.r) / pr; }
+    clampMap(c.pos, c.r);
+    if (isSea() && c.key === 'spinosaurus') c.pos.z = Math.min(c.pos.z, -SEA_H + 7); // 스피노는 수면 근처 얕은 물에서만
     c.wet = wet;
     // 물기
     if (c.kind === 'dino' && c.biteCd <= 0 && c.spawnProt <= 0) {
@@ -1457,7 +1484,7 @@ function step(dt) {
   for (const ch of world.chunks) {
     if (ch.dead) continue;
     ch.t += dt;
-    if (ch.t >= ch.life) { ch.dead = true; scene.remove(ch.mesh); continue; }
+    if (ch.t >= ch.life) { ch.dead = true; worldRoot.remove(ch.mesh); continue; }
   }
   if (world.chunks.some(c => c.dead)) world.chunks = world.chunks.filter(c => !c.dead);
 
@@ -1474,7 +1501,7 @@ function spawnDust(c) {
   const m = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({ color: Math.random() < 0.5 ? 0xe8d29a : 0xfff0b0, transparent: true, opacity: 0.55, depthWrite: false }));
   const bx = -Math.sin(c.heading), bz = -Math.cos(c.heading);
   m.position.set(c.pos.x + bx * c.r + rand(-0.4, 0.4) * c.s, 0.25 + Math.random() * 0.3, c.pos.z + bz * c.r + rand(-0.4, 0.4) * c.s);
-  scene.add(m);
+  worldRoot.add(m);
   dusts.push({ m, t: 0, s: 0.5 + c.s * 0.4 });
 }
 function renderWorld(dt) {
@@ -1497,11 +1524,22 @@ function renderWorld(dt) {
     }
     c.anim += dt * (sp2 / Math.max(0.35, c.s)) * 2.2;
     const m = c.model;
-    m.group.rotation.y = c.heading;
     m.group.scale.setScalar(c.s);
-    c.holder.position.set(c.pos.x, c.wet ? -0.22 * c.s : 0, c.pos.z);
+    if (isSea()) {
+      m.group.rotation.y = 0;
+      seaOrient(c, dt);
+      c.holder.position.set(c.pos.x, 0, c.pos.z);
+      m.group.position.y = m.extra.swim ? 0 : -(c.sp.shape ? c.sp.shape.hip + 0.1 : 1) * c.s; // 육지 공룡(스피노)은 몸 중심을 맞춤
+      if (c.shadow) c.shadow.visible = false;
+    } else {
+      c.pivot.quaternion.identity(); m.group.position.y = 0;
+      m.group.rotation.y = c.heading;
+      c.holder.position.set(c.pos.x, c.wet ? -0.22 * c.s : 0, c.pos.z);
+    }
     const sw = sp2 > 0.4 ? 0.7 : 0;
-    m.legs.forEach((l, i) => { l.rotation.x = Math.sin(c.anim + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * sw; });
+    if (isSea() && !m.extra.swim) m.legs.forEach((l, i) => { l.rotation.x = 0.9 + Math.sin(c.anim * 0.6 + i) * 0.25; }); // 스피노: 다리를 접고 헤엄
+    else if (isSea()) m.legs.forEach((l, i) => { l.rotation.x = Math.sin(c.anim * 0.8 + (i % 2 ? 0.4 : 0) + (i > 1 ? Math.PI * 0.6 : 0)) * (0.35 + sw * 0.3); }); // 지느러미 젓기
+    else m.legs.forEach((l, i) => { l.rotation.x = Math.sin(c.anim + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * sw; });
     if (m.extra.smooth) { // 매끈한 몸: 꼬리가 휘며 흔들림
       const sm = m.extra.smooth, arr = sm.geo.attributes.position.array, b = sm.base, w = sm.w;
       const whip = c.tailAnim > 0 ? Math.sin((1 - c.tailAnim / 0.45) * Math.PI * 3) * 0.55 : 0;
@@ -1572,7 +1610,8 @@ function renderWorld(dt) {
     c.ring.material.opacity = c.spawnProt > 0 ? 0.35 : op;
     // 에너지바
     if (c.tag) {
-      c.tag.position.set(0, c.kind === 'dino' ? c.s * 2.1 + 1.25 : c.s * 1.4 + 0.6, 0);
+      const th = c.kind === 'dino' ? c.s * (isSea() && c.model.extra.swim ? 1.1 : 2.1) + 1.25 : c.s * 1.4 + 0.6;
+      if (isSea()) c.tag.position.set(0, 2, -th); else c.tag.position.set(0, th, 0);
       if (c.hpGhost < c.hp) c.hpGhost = c.hp;
       if (c.hpGhost > c.hp) { if (c.ghostDelay > 0) c.ghostDelay -= dt; else c.hpGhost = Math.max(c.hp, c.hpGhost - c.maxHp * 0.8 * dt); }
       if (Math.abs(c.drawnHp - c.hp) > c.maxHp * 0.01 || Math.abs(c.drawnGhost - c.hpGhost) > c.maxHp * 0.01) drawTag(c);
@@ -1600,20 +1639,20 @@ function renderWorld(dt) {
     const k = w.t / 0.35;
     w.m.scale.setScalar(w.R * k);
     w.m.material.opacity = 0.9 * (1 - k);
-    if (k >= 1) { scene.remove(w.m); waves.splice(i, 1); }
+    if (k >= 1) { worldRoot.remove(w.m); waves.splice(i, 1); }
   }
   for (let i = dusts.length - 1; i >= 0; i--) {
     const d = dusts[i]; d.t += dt;
     const k = d.t / 0.55;
     d.m.scale.setScalar(d.s * (1 + k * 2.2)); d.m.position.y += dt * 0.8;
     d.m.material.opacity = 0.55 * (1 - k);
-    if (k >= 1) { scene.remove(d.m); d.m.material.dispose(); dusts.splice(i, 1); }
+    if (k >= 1) { worldRoot.remove(d.m); d.m.material.dispose(); dusts.splice(i, 1); }
   }
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i]; f.t += dt;
     f.sp.position.y += dt * 1.6;
     f.sp.material.opacity = 1 - clamp((f.t - 0.5) / 0.4, 0, 1);
-    if (f.t > 0.9) { scene.remove(f.sp); f.sp.material.map.dispose(); f.sp.material.dispose(); floaters.splice(i, 1); }
+    if (f.t > 0.9) { worldRoot.remove(f.sp); f.sp.material.map.dispose(); f.sp.material.dispose(); floaters.splice(i, 1); }
   }
   // 보물 화살표
   if (world.chest && !world.chest.opened && player && !player.dead && state === 'play') {
@@ -1628,6 +1667,16 @@ function renderWorld(dt) {
 
 function updateCamera(dt) {
   if (window.__cam) { const k = window.__cam; camera.position.set(...k.pos); camera.lookAt(...k.look); sun.position.set(k.look[0] + 22, 50, k.look[2] + 16); sun.target.position.set(k.look[0], 0, k.look[2]); return; } // 테스트용 고정 카메라
+  if (state === 'intro' && seaIntro) { seaCamera(seaIntro.cam, 26, dt, true); return; }
+  if (isSea()) { // 옆에서 보는 카메라
+    if (state === 'menu' || !player) { seaCamera({ x: Math.sin(performance.now() / 9000) * 40, z: 0 }, 70, dt, true); return; }
+    const zoom = (0.55 + player.s * 0.48) * (camera.aspect < 1 ? 1.55 : 1);
+    seaCamera(player.pos, 20 * zoom, dt, false);
+    const wantFov = player.boostT > 0 && state === 'play' ? 68 : 50;
+    if (Math.abs(camera.fov - wantFov) > 0.05) { camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
+    return;
+  }
+  if (scene.fog.near !== 55) { scene.fog.near = 55; scene.fog.far = 120; }
   if (state === 'menu' || !player) {
     menuCamA += dt * 0.08;
     camera.position.set(Math.cos(menuCamA) * 50, 34, Math.sin(menuCamA) * 50);
@@ -1653,15 +1702,16 @@ function demoWorld() {
   for (let i = 0; i < 8; i++) makeCreature('dino', pick(curEra.pool), { level: (Math.random() * 6 + 1) | 0, name: pick(BOT_NAMES) });
   for (let i = 0; i < 6; i++) spawnPrey('prey');
   for (let i = 0; i < 25; i++) world.ferns.push(makeFern());
-  makePtero();
+  if (!isSea()) makePtero();
 }
 
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  if (state === 'intro') updateSeaIntro(dt);
   if (state === 'play') {
     step(dt);
-    if (player && state !== 'menu') updateHUD();
+    if (player && state !== 'menu') { updateHUD(); updateAirHUD(); }
   } else if (state === 'menu') {
     for (const c of world.creatures) {
       if (c.dead) continue;
@@ -1669,7 +1719,7 @@ function loop(now) {
       if (c.aiT <= 0) { c.aiT = 1; c.wanderA += rand(-0.8, 0.8); c.want.set(Math.cos(c.wanderA), 0, Math.sin(c.wanderA)).multiplyScalar(0.5); }
       c.vel.lerp(c.want.clone().multiplyScalar(c.sp.speed), Math.min(1, dt * 5));
       c.pos.addScaledVector(c.vel, dt);
-      if (Math.hypot(c.pos.x, c.pos.z) > MAP_R - 15) c.wanderA = Math.atan2(-c.pos.z, -c.pos.x);
+      if (edgeGap(c.pos) < 15) c.wanderA = inwardAngle(c.pos);
     }
     for (const p of world.pteros) { if (p.dead) continue; p.state = 'circle'; p.t = 99; updatePtero(p, dt); }
   }
@@ -1696,7 +1746,7 @@ window.__el = () => elapsed;
 window.__AU = AU; window.__sfx = sfx; window.__voice = voice;
 window.__dino = {
   world, get player() { return player; }, get state() { return state; }, get ev() { return ev; },
-  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, spawnBoss, get curEra() { return curEra; }, skip: () => { elapsed = ROUND_TIME - 0.5; },
+  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, updateBreath: (c, dt) => updateBreath(c, dt), spawnBoss, get curEra() { return curEra; }, skip: () => { elapsed = ROUND_TIME - 0.5; },
   setElapsed: t => { elapsed = t; }, freeze: () => { state = 'over'; }, makeCreature, openChest, makeChest, findBiteTarget, doBite, pauseGame, resumeGame,
   forceEvent: type => { ev = { type, t: EVENTS[type].dur }; EVENTS[type].start(); $('eventBar').classList.remove('hidden'); }
 };
