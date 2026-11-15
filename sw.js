@@ -1,6 +1,6 @@
 // 공룡 배틀 서비스 워커 — 오프라인 실행용
 // 게임 파일을 고칠 때마다 VERSION을 올리면 새 파일로 교체됨
-const VERSION = 'dino-v5';
+const VERSION = 'dino-v6';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'css/style.css', 'js/lib/three.min.js', 'js/data.js', 'js/sea-data.js', 'js/engine.js', 'js/models.js', 'js/sea-models.js', 'js/game.js', 'js/sea-game.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-64.png'];
 self.addEventListener('install', e => {

@@ -1723,7 +1723,16 @@ function demoWorld() {
   if (!isSea()) makePtero();
 }
 
+// 한 프레임에서 오류가 나도 게임이 멈추지 않게: 다음 프레임 예약을 먼저 하고 오류는 기록만
+let frameErrs = 0;
 function loop(now) {
+  requestAnimationFrame(loop);
+  try { frame(now); } catch (e) {
+    if (frameErrs++ < 3) console.error('[frame]', e);
+    last = now;
+  }
+}
+function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (state === 'intro') updateSeaIntro(dt);
@@ -1748,15 +1757,16 @@ function loop(now) {
   }
   updateCamera(state === 'paused' ? 0 : dt);
   renderer.render(scene, camera);
-  requestAnimationFrame(loop);
 }
 
 if (document.fonts && document.fonts.load) {
   document.fonts.load("44px 'Jua'").then(() => { for (const c of world.creatures) if (c.tag && !c.dead) drawTag(c); }).catch(() => {});
 }
 
-demoWorld();
-requestAnimationFrame(loop);
+// 모든 스크립트(sea-game.js 포함)를 읽은 뒤에 시작해야 함.
+// 바다 시대가 저장돼 있으면 첫 화면부터 바다 함수를 쓰기 때문.
+function boot() { demoWorld(); requestAnimationFrame(loop); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 
 
 // 테스트용 훅
