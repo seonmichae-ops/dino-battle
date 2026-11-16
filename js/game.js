@@ -88,7 +88,10 @@ function gain(c, xp) {
 // ====================================================================
 const meatGeo = new THREE.DodecahedronGeometry(0.5, 0);
 const boneGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.1, 5);
-function spawnChunks(pos, srcSize, totalXp, n) {
+// 고기 조각 크기: 예전 크기의 1.5배 × 잡아먹힌 공룡 레벨 보정(Lv.1 1배 → Lv.10 약 1.6배)
+const CHUNK_BASE = 1.5, CHUNK_PER_LV = 0.07;
+const chunkScale = (srcSize, lv) => CHUNK_BASE * clamp(0.38 + srcSize * 0.18, 0.4, 0.9) * (1 + CHUNK_PER_LV * (clamp(lv || 1, 1, MAX_LV) - 1));
+function spawnChunks(pos, srcSize, totalXp, n, srcLv) {
   const per = Math.max(1, Math.ceil(totalXp / n));
   for (let i = 0; i < n; i++) {
     const g = new THREE.Group();
@@ -97,14 +100,14 @@ function spawnChunks(pos, srcSize, totalXp, n) {
     const bone = new THREE.Mesh(boneGeo, mat(0xf3ead8));
     bone.rotation.z = Math.PI / 2; bone.position.y = 0.05; g.add(bone);
     for (const sx of [-1, 1]) { const knob = new THREE.Mesh(new THREE.SphereGeometry(0.13, 5, 4), mat(0xf3ead8)); knob.position.set(sx * 0.55, 0.05, 0); g.add(knob); }
-    const sc = clamp(0.38 + srcSize * 0.18, 0.4, 0.9);
+    const sc = chunkScale(srcSize, srcLv);
     g.scale.setScalar(sc);
     const ring = makeRing(0x4cd964, 0.85); ring.scale.setScalar(0.75); ring.position.y = -0.3; g.add(ring);
     worldRoot.add(g);
     const a = (i / n) * Math.PI * 2 + rand(-0.3, 0.3), d = srcSize * 0.5 + rand(0.6, 1.4);
     const to = new THREE.Vector3(pos.x + Math.cos(a) * d, 0, pos.z + Math.sin(a) * d);
     clampMap(to, 2);
-    world.chunks.push({ mesh: g, ring, from: pos.clone(), pos: to, xp: per, t: 0, life: 25, r: 0.4 * sc + 0.2, dead: false, isChunk: true, spin: rand(0, 6) });
+    world.chunks.push({ mesh: g, ring, from: pos.clone(), pos: to, xp: per, t: 0, life: 25, r: 0.4 * sc + 0.2, sc, dead: false, isChunk: true, spin: rand(0, 6) });
   }
 }
 
@@ -143,7 +146,7 @@ function kill(B, A, how) {
   }
   // 공룡·먹이 동물은 고기 조각으로
   const n = B.kind === 'prey' ? 2 : 2 + Math.floor(B.level / 2) + (B.sp.adult > 2 ? 1 : 0);
-  spawnChunks(B.pos, B.s, xpOf(B), n);
+  spawnChunks(B.pos, B.s, xpOf(B), n, B.level);
   if (A && A.kind === 'dino' && !isMeatEater(A)) gain(A, Math.round(xpOf(B) * 0.6)); // 초식은 고기를 못 먹으니 바로 경험치
   if (A && A.isPlayer && isMeatEater(A)) toast(`${B.sp.name} 사냥 성공! 고기 ${n}조각 🍖`);
   if (A && A.kind === 'dino' && isMeatEater(A)) { sfxAt('bigcrunch', A.pos, A.isPlayer ? 1 : 0.6); voice(A, 1); }
@@ -1646,7 +1649,7 @@ function renderWorld(dt) {
   for (const ch of world.chunks) {
     const k = clamp(ch.t / 0.4, 0, 1);
     const x = ch.from.x + (ch.pos.x - ch.from.x) * k, z = ch.from.z + (ch.pos.z - ch.from.z) * k;
-    ch.mesh.position.set(x, 0.35 + Math.sin(k * Math.PI) * 1.4, z);
+    ch.mesh.position.set(x, 0.1 + 0.3 * ch.sc + Math.sin(k * Math.PI) * 1.4, z);
     ch.spin += dt * 1.5; ch.mesh.rotation.y = ch.spin;
     ch.ring.visible = !!pMeat && inGame;
     ch.ring.material.opacity = pulse;
