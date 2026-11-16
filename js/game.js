@@ -86,6 +86,8 @@ function gain(c, xp) {
 // ====================================================================
 //  고기 조각
 // ====================================================================
+// 기본 이동 속도 배수 (2026-11-17: 1.3배로 올림). 모든 공룡·바다 생물·먹잇감에 똑같이 적용
+const SPEED_MUL = 1.3;
 const meatGeo = new THREE.DodecahedronGeometry(0.5, 0);
 const boneGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.1, 5);
 // 고기 조각 크기: 예전 크기의 1.5배 × 잡아먹힌 공룡 레벨 보정(Lv.1 1배 → Lv.10 약 1.6배)
@@ -303,7 +305,7 @@ function useSkill(c, i) {
   const near = (o, R) => Math.hypot(o.pos.x - c.pos.x, o.pos.z - c.pos.z) < R + o.r;
   if (sk.type === 'dash') {
     c.dashT = 0.35; c.invT = 0.6;
-    c.vel.set(fx * c.sp.speed * 3, 0, fz * c.sp.speed * 3);
+    c.vel.set(fx * c.sp.speed * SPEED_MUL * 3, 0, fz * c.sp.speed * SPEED_MUL * 3);
     sfxAt('whoosh', c.pos, c.isPlayer ? 0.7 : 0.3);
   } else if (sk.type === 'sprint') {
     c.sprintT = 2.5;
@@ -311,7 +313,7 @@ function useSkill(c, i) {
   } else if (sk.type === 'lunge') {
     // 덥석물기: 앞으로 뛰어들며 처음 닿는 상대를 자동으로 강하게 문다
     c.dashT = 0.35; c.lungeBuff = 1.2; c.lungeHit = true;
-    c.vel.set(fx * c.sp.speed * 2.8, 0, fz * c.sp.speed * 2.8);
+    c.vel.set(fx * c.sp.speed * SPEED_MUL * 2.8, 0, fz * c.sp.speed * SPEED_MUL * 2.8);
     voice(c, 1);
   } else if (sk.type === 'tail') {
     // 꼬리 휘두르기: 주변 모두에게 큰 피해 + 멀리 튕겨내고 잠깐 비틀거림
@@ -347,7 +349,7 @@ function useSkill(c, i) {
     if (c.isPlayer) toast('덤불 속에 숨었다! (3초)');
   } else if (sk.type === 'charge') {
     c.chargeT = 0.7; c.dashT = 0.7; c.chargeHits = new Set();
-    c.vel.set(fx * c.sp.speed * 2.8, 0, fz * c.sp.speed * 2.8);
+    c.vel.set(fx * c.sp.speed * SPEED_MUL * 2.8, 0, fz * c.sp.speed * SPEED_MUL * 2.8);
     voice(c, 1.2);
     sfxAt('stomp', c.pos, c.isPlayer ? 0.8 : 0.5);
   } else if (sk.type === 'armor') {
@@ -1428,7 +1430,7 @@ function step(dt) {
       if (isSea() && c.sp.breath && c.air < 0.32) { c.want.set(rand(-0.2, 0.2), 0, -1).normalize(); c.goal = null; } // 숨 쉬러 수면으로
     }
     if (isSea() && c.sp.breath && c.kind === 'dino') updateBreath(c, dt);
-    let spd = c.sp.speed;
+    let spd = c.sp.speed * SPEED_MUL;
     if (c.kind === 'dino') spd *= 1 - 0.22 * (c.level - 1) / (MAX_LV - 1);
     if (!c.isPlayer && c.kind === 'dino') spd *= 0.93;
     if (c.sprintT > 0) spd *= 1.9;
