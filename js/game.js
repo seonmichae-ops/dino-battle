@@ -31,6 +31,13 @@ function makeCreature(kind, key, opts = {}) {
   return c;
 }
 
+// 통째로 잡아먹기: 몸집이 1.25배 넘게 커야 하고,
+// 육식·잡식끼리는 레벨도 반드시 더 높아야 함(2026-11-20). 같은 레벨이면 못 잡아먹음. 보스는 예외.
+function canSwallow(A, o) {
+  if (!(A.s > o.s * EAT_RATIO)) return false;
+  if (A.boss || !isMeatEater(A) || !isMeatEater(o)) return true;
+  return A.level > o.level;
+}
 function updateSize(c, fill) {
   if (c.kind === 'dino') {
     const g = (c.level - 1) / (MAX_LV - 1);
@@ -196,7 +203,7 @@ function findBiteTarget(A) {
     }
     if (!A.isPlayer && o.s > A.s * EAT_RATIO) continue; // 봇은 큰 상대를 물지 않음
     if (!A.isPlayer && isRebel(o)) continue;
-    consider('creature', o, o.pos.x, o.pos.z, o.r, o.s * EAT_RATIO < A.s ? 0.4 : 0);
+    consider('creature', o, o.pos.x, o.pos.z, o.r, canSwallow(A, o) ? 0.4 : 0);
   }
   if (meat) for (const ch of world.chunks) if (!ch.dead && ch.t > 0.4) consider('chunk', ch, ch.pos.x, ch.pos.z, ch.r, 0.5);
   if (plants) for (const f of world.ferns) if (f.active) consider('fern', f, f.pos.x, f.pos.z, f.r, 0.2);
@@ -251,7 +258,7 @@ function doBite(A, tgt) {
         if (A.isPlayer) sfx('hit');
         break;
       }
-      const catchable = A.s > o.s * EAT_RATIO && o.invT <= 0 && !isRebel(o) && !(o.armorT > 0); // 웅크린 갑옷 공룡은 통째로 못 삼킴
+      const catchable = canSwallow(A, o) && o.invT <= 0 && !isRebel(o) && !(o.armorT > 0); // 웅크린 갑옷 공룡은 통째로 못 삼킴
       if (catchable) { kill(o, A); break; }
       let mult = Math.pow(A.s / o.s, 1.3);
       if (A.lungeBuff > 0) { mult *= 2.5; A.lungeBuff = 0; if (A.isPlayer) toast('덥석!'); }
@@ -625,7 +632,7 @@ function think(c) {
     const d = Math.hypot(dx, dz);
     if (d > view) continue;
     let danger = oHostile && o.kind === 'dino' && o.spawnProt <= 0 && (
-      (isMeatEater(o) && o.s > c.s * EAT_RATIO) ||
+      (isMeatEater(o) && canSwallow(o, c)) ||
       (o.sp.diet === 'herb' && o.s > c.s * 1.5 && d < o.r + c.r + 3) ||
       (o.sp.diet === 'herb' && o.level >= MAX_LV && meat && d < o.r + c.r + 4)); // Lv.10 초식은 육식을 밟음
     if (isRebel(o) && meat) danger = true; // 반란 중인 초식공룡을 피함
@@ -636,7 +643,7 @@ function think(c) {
     }
     if (meat && cHostile && !isRebel(o)) {
       let score = 0;
-      if (o.kind === 'bug' || c.s > o.s * EAT_RATIO) score = xpOf(o) / (d + 4);
+      if (o.kind === 'bug' || canSwallow(c, o)) score = xpOf(o) / (d + 4);
       else if (o.kind === 'dino' && c.aggr && o.s < c.s * 1.1 && c.hp > c.maxHp * 0.6 && o.hp < c.hp) score = 2.5 / (d + 4);
       if (o.isPlayer && elapsed < 12) score = 0;
       if (c.boss && o.kind === 'dino') score = Math.max(score, (o.isPlayer ? 6 : 3) / (d + 4)); // 보스는 공룡을 사냥
@@ -1622,8 +1629,8 @@ function renderWorld(dt) {
       else if (!cHost && !pHost) col = ringCols.blue;
       else if (c.hideT > 0) { col = ringCols.pale; op = 0.25; }
       else if (isRebel(player) && isMeatEater(c)) { col = ringCols.green; op = pulse; }
-      else if (pHost && pMeat && player.s > c.s * EAT_RATIO) col = ringCols.green;
-      else if (cHost && isMeatEater(c) && c.s > player.s * EAT_RATIO) col = ringCols.red;
+      else if (pHost && pMeat && canSwallow(player, c)) col = ringCols.green;
+      else if (cHost && isMeatEater(c) && canSwallow(c, player)) col = ringCols.red;
       else if (c.kind === 'dino' && !isMeatEater(c) && (c.s > player.s * 1.5 || (c.level >= MAX_LV && pMeat))) col = ringCols.red;
       else if (pHost && pMeat && player.level >= MAX_LV && sameKind(c, player)) col = ringCols.yellow;
       else if (!pMeat && !isMeatEater(c)) col = ringCols.pale;
@@ -1779,7 +1786,7 @@ window.__el = () => elapsed;
 window.__AU = AU; window.__sfx = sfx; window.__voice = voice;
 window.__dino = {
   world, get player() { return player; }, get state() { return state; }, get ev() { return ev; },
-  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, updateBreath: (c, dt) => updateBreath(c, dt), spawnBoss, get curEra() { return curEra; }, get purpleAt() { return purpleAt; }, planPurple, skip: () => { elapsed = ROUND_TIME - 0.5; },
+  startGame, useSkill, gain, setSel: k => { selected = k; }, setEra, updateBreath: (c, dt) => updateBreath(c, dt), spawnBoss, canSwallow, get curEra() { return curEra; }, get purpleAt() { return purpleAt; }, planPurple, skip: () => { elapsed = ROUND_TIME - 0.5; },
   setElapsed: t => { elapsed = t; }, freeze: () => { state = 'over'; }, makeCreature, openChest, makeChest, findBiteTarget, doBite, pauseGame, resumeGame,
   forceEvent: type => { ev = { type, t: EVENTS[type].dur }; EVENTS[type].start(); $('eventBar').classList.remove('hidden'); }
 };
