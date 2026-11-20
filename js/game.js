@@ -33,6 +33,7 @@ function makeCreature(kind, key, opts = {}) {
 
 // 통째로 잡아먹기: 몸집이 1.25배 넘게 커야 하고,
 // 육식·잡식끼리는 레벨도 반드시 더 높아야 함(2026-11-20). 같은 레벨이면 못 잡아먹음. 보스는 예외.
+const UNDERDOG_CAP = 0.1;
 function canSwallow(A, o) {
   if (!(A.s > o.s * EAT_RATIO)) return false;
   if (A.boss || !isMeatEater(A) || !isMeatEater(o)) return true;
@@ -263,7 +264,11 @@ function doBite(A, tgt) {
       let mult = Math.pow(A.s / o.s, 1.3);
       if (A.lungeBuff > 0) { mult *= 2.5; A.lungeBuff = 0; if (A.isPlayer) toast('덥석!'); }
       if (isRebel(o)) mult *= 0.5;
-      damage(o, A.atk * mult, A);
+      let dmg = A.atk * mult;
+      // 육식·잡식이 레벨이 같거나 더 높은 육식·잡식을 물 때: 몸집이 커도 한 번에 최대 체력의 10%까지만
+      // → 꽉 찬 체력이면 10번은 물어야 쓰러짐 (2026-11-20). 부스터 힘 배수는 따로 적용됨
+      if (isMeatEater(A) && isMeatEater(o) && A.level <= o.level && !A.boss) dmg = Math.min(dmg, o.maxHp * UNDERDOG_CAP);
+      damage(o, dmg, A);
       break;
     }
   }
